@@ -170,12 +170,14 @@ class _ReportScreenState extends State<ReportScreen> {
               ),
             ),
             const SizedBox(height: 32),
-            // Submit Button
+            // Submit Button - FIXED HERE
             CustomButton(
               text: 'Submit Report',
               isLoading: _isSubmitting,
               backgroundColor: const Color(0xFFFF647C),
-              onPressed: _selectedReason == null ? null : _submitReport,
+              onPressed: _selectedReason == null
+                  ? null
+                  : () => _submitReport(), // Fixed: Wrap in anonymous function
             ),
             const SizedBox(height: 16),
             // Cancel Button

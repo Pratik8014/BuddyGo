@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
-import 'package:buddygoapp/core/widgets/custom_button.dart';
+import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:buddygoapp/core/services/firebase_service.dart';
 import 'package:buddygoapp/features/discovery/data/trip_model.dart';
 import 'package:buddygoapp/features/groups/presentation/create_group_screen.dart';
 
@@ -13,68 +14,10 @@ class DiscoveryScreen extends StatefulWidget {
 }
 
 class _DiscoveryScreenState extends State<DiscoveryScreen> {
-  final List<Trip> _trips = [
-    Trip(
-      id: '1',
-      title: 'Goa Beach Adventure',
-      description: '7 days of sun, sand, and sea in beautiful Goa',
-      destination: 'Goa, India',
-      startDate: DateTime.now().add(const Duration(days: 5)),
-      endDate: DateTime.now().add(const Duration(days: 12)),
-      maxMembers: 6,
-      currentMembers: 3,
-      budget: 15000,
-      hostId: 'host1',
-      hostName: 'Sarah Wilson',
-      hostImage: 'https://randomuser.me/api/portraits/women/65.jpg',
-      images: [
-        'https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=800',
-      ],
-      tags: ['Beach', 'Adventure', 'Party'],
-      isPublic: true,
-    ),
-    Trip(
-      id: '2',
-      title: 'Himalayan Trek',
-      description: '5-day trek through the majestic Himalayas',
-      destination: 'Manali, India',
-      startDate: DateTime.now().add(const Duration(days: 15)),
-      endDate: DateTime.now().add(const Duration(days: 20)),
-      maxMembers: 8,
-      currentMembers: 5,
-      budget: 12000,
-      hostId: 'host2',
-      hostName: 'Mike Chen',
-      hostImage: 'https://randomuser.me/api/portraits/men/32.jpg',
-      images: [
-        'https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=800',
-      ],
-      tags: ['Mountains', 'Trekking', 'Adventure'],
-      isPublic: true,
-    ),
-    Trip(
-      id: '3',
-      title: 'Bali Cultural Trip',
-      description: 'Experience Balinese culture and temples',
-      destination: 'Bali, Indonesia',
-      startDate: DateTime.now().add(const Duration(days: 30)),
-      endDate: DateTime.now().add(const Duration(days: 37)),
-      maxMembers: 4,
-      currentMembers: 2,
-      budget: 25000,
-      hostId: 'host3',
-      hostName: 'Lisa Park',
-      hostImage: 'https://randomuser.me/api/portraits/women/44.jpg',
-      images: [
-        'https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=800',
-      ],
-      tags: ['Culture', 'Temples', 'Beach'],
-      isPublic: true,
-    ),
-  ];
-
+  final FirebaseService _firebaseService = FirebaseService();
   String _selectedFilter = 'All';
   final List<String> _filters = ['All', 'Upcoming', 'Popular', 'Nearby', 'Budget'];
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
@@ -95,12 +38,16 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: TextField(
+                controller: _searchController,
                 decoration: InputDecoration(
                   hintText: 'Search destinations or trips...',
                   prefixIcon: const Icon(Icons.search, color: Colors.grey),
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                 ),
+                onChanged: (value) {
+                  // Implement search
+                },
               ),
             ),
           ),
@@ -217,14 +164,57 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
               ),
             ),
           ),
-          // Trips List
-          SliverList(
-            delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                final trip = _trips[index];
-                return TripCard(trip: trip);
+          // Real-time Trips List
+          SliverToBoxAdapter(
+            child: StreamBuilder<List<Trip>>(
+              stream: _firebaseService.getTripsStream(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+
+                if (snapshot.hasError) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(child: Text('Error loading trips')),
+                  );
+                }
+
+                final trips = snapshot.data ?? [];
+
+                if (trips.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Column(
+                      children: [
+                        Icon(Icons.travel_explore, size: 64, color: Colors.grey),
+                        SizedBox(height: 16),
+                        Text(
+                          'No trips found',
+                          style: TextStyle(fontSize: 18, color: Colors.grey),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Be the first to create a trip!',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: trips.length,
+                  itemBuilder: (context, index) {
+                    return TripCard(trip: trips[index]);
+                  },
+                );
               },
-              childCount: _trips.length,
             ),
           ),
         ],
@@ -240,6 +230,7 @@ class TripCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final firebaseService = FirebaseService();
     final days = trip.endDate.difference(trip.startDate).inDays;
     final seatsLeft = trip.maxMembers - trip.currentMembers;
     final percentage = trip.currentMembers / trip.maxMembers;
@@ -267,13 +258,20 @@ class TripCard extends StatelessWidget {
                     topRight: Radius.circular(20),
                   ),
                   child: CachedNetworkImage(
-                    imageUrl: trip.images.first,
+                    imageUrl: trip.images.isNotEmpty
+                        ? trip.images.first
+                        : 'https://images.unsplash.com/photo-1544551763-46a013bb70d5',
                     height: 180,
                     width: double.infinity,
                     fit: BoxFit.cover,
                     placeholder: (context, url) => Container(
                       height: 180,
                       color: Colors.grey[200],
+                    ),
+                    errorWidget: (context, url, error) => Container(
+                      height: 180,
+                      color: Colors.grey[200],
+                      child: const Icon(Icons.image, size: 50, color: Colors.grey),
                     ),
                   ),
                 ),
@@ -310,35 +308,6 @@ class TripCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                // Tags
-                Positioned(
-                  bottom: 16,
-                  left: 16,
-                  child: Wrap(
-                    spacing: 8,
-                    children: trip.tags
-                        .map(
-                          (tag) => Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.6),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          tag,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    )
-                        .toList(),
-                  ),
-                ),
               ],
             ),
             // Content
@@ -366,22 +335,32 @@ class TripCard extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                CircleAvatar(
-                                  radius: 12,
-                                  backgroundImage:
-                                  CachedNetworkImageProvider(trip.hostImage),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'By ${trip.hostName}',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Color(0xFF6E7A8A),
-                                  ),
-                                ),
-                              ],
+                            FutureBuilder(
+                              future: firebaseService.getUserProfile(trip.hostId),
+                              builder: (context, snapshot) {
+                                final host = snapshot.data;
+                                return Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 12,
+                                      backgroundImage: host?.photoUrl != null
+                                          ? CachedNetworkImageProvider(host!.photoUrl!)
+                                          : null,
+                                      child: host?.photoUrl == null
+                                          ? Text(host?.name?[0] ?? '?')
+                                          : null,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'By ${host?.name ?? trip.hostName}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Color(0xFF6E7A8A),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
                             ),
                           ],
                         ),
@@ -397,7 +376,7 @@ class TripCard extends StatelessWidget {
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
-                          '₹${trip.budget}',
+                          '₹${trip.budget.toInt()}',
                           style: const TextStyle(
                             color: Color(0xFF00D4AA),
                             fontSize: 14,
@@ -436,7 +415,7 @@ class TripCard extends StatelessWidget {
                             ),
                           ),
                           Text(
-                            '$days days • ${DateFormat('EEE').format(trip.startDate)} to ${DateFormat('EEE').format(trip.endDate)}',
+                            '$days days',
                             style: const TextStyle(
                               fontSize: 12,
                               color: Color(0xFF6E7A8A),
@@ -454,11 +433,11 @@ class TripCard extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
+                          const Text(
                             'Members',
                             style: TextStyle(
                               fontSize: 14,
-                              color: const Color(0xFF6E7A8A),
+                              color: Color(0xFF6E7A8A),
                             ),
                           ),
                           Text(
@@ -524,14 +503,31 @@ class TripCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: CustomButton(
-                          text: seatsLeft > 0 ? 'Join Trip' : 'Waitlist',
-                          onPressed: () {
-                            // Join trip
-                          },
-                          backgroundColor: seatsLeft > 0
-                              ? const Color(0xFF7B61FF)
-                              : const Color(0xFFFF647C),
+                        child: ElevatedButton(
+                          onPressed: seatsLeft > 0
+                              ? () async {
+                            final userId = firebaseService.currentUserId;
+                            if (userId != null) {
+                              await firebaseService.joinTrip(trip.id, userId);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Successfully joined the trip!'),
+                                  backgroundColor: Color(0xFF00D4AA),
+                                ),
+                              );
+                            }
+                          }
+                              : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: seatsLeft > 0
+                                ? const Color(0xFF7B61FF)
+                                : Colors.grey,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                          child: Text(seatsLeft > 0 ? 'Join Trip' : 'Waitlist'),
                         ),
                       ),
                     ],

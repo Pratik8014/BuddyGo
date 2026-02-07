@@ -3,7 +3,7 @@ import '../constants/app_colors.dart';
 
 class CustomButton extends StatelessWidget {
   final String text;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed; // Change to nullable
   final bool isLoading;
   final bool isFullWidth;
   final Color? backgroundColor;
@@ -16,7 +16,7 @@ class CustomButton extends StatelessWidget {
   const CustomButton({
     super.key,
     required this.text,
-    required this.onPressed,
+    required this.onPressed, // Keep as required
     this.isLoading = false,
     this.isFullWidth = true,
     this.backgroundColor,
@@ -46,7 +46,7 @@ class CustomButton extends StatelessWidget {
             : null,
       ),
       child: ElevatedButton(
-        onPressed: isLoading ? null : onPressed,
+        onPressed: isLoading ? null : onPressed, // This now accepts null
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.transparent,
           shadowColor: Colors.transparent,

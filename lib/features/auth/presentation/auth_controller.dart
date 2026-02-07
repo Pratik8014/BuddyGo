@@ -2,40 +2,60 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:buddygoapp/core/services/firebase_service.dart';
+import 'package:buddygoapp/features/user/data/user_model.dart';
 
 class AuthController with ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseService _firebaseService = FirebaseService();
   final GoogleSignIn _googleSignIn = GoogleSignIn();
 
-  User? _currentUser;
+  UserModel? _currentUser;
   bool _isLoading = false;
   bool _isLoggedIn = false;
 
-  User? get currentUser => _currentUser;
+  UserModel? get currentUser => _currentUser;
   bool get isLoading => _isLoading;
   bool get isLoggedIn => _isLoggedIn;
 
   AuthController() {
-    _checkAuthState();
+    _initialize();
   }
 
-  Future<void> _checkAuthState() async {
-    _currentUser = _auth.currentUser;
-    _isLoggedIn = _currentUser != null;
-    notifyListeners();
-  }
-
-  Future<bool> checkLoginStatus() async {
+  Future<void> _initialize() async {
     final prefs = await SharedPreferences.getInstance();
     _isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
-    return _isLoggedIn;
+
+    if (_isLoggedIn) {
+      await _loadCurrentUser();
+    }
   }
 
-  Future<void> saveLoginStatus(bool status) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isLoggedIn', status);
-    _isLoggedIn = status;
+  Future<void> _loadCurrentUser() async {
+    final user = _auth.currentUser;
+    if (user != null) {
+      final userData = await _firebaseService.getUserProfile(user.uid);
+      if (userData != null) {
+        _currentUser = userData;
+      } else {
+        // Create user profile if doesn't exist
+        await _createUserProfile(user);
+      }
+    }
     notifyListeners();
+  }
+
+  Future<void> _createUserProfile(User firebaseUser) async {
+    final userModel = UserModel(
+      id: firebaseUser.uid,
+      email: firebaseUser.email ?? '',
+      name: firebaseUser.displayName,
+      photoUrl: firebaseUser.photoURL,
+      isEmailVerified: firebaseUser.emailVerified,
+    );
+
+    await _firebaseService.createUserProfile(userModel);
+    _currentUser = userModel;
   }
 
   Future<bool> signInWithEmail(String email, String password) async {
@@ -45,8 +65,9 @@ class AuthController with ChangeNotifier {
         email: email,
         password: password,
       );
-      _currentUser = result.user;
-      await saveLoginStatus(true);
+
+      await _saveLoginStatus(true);
+      await _loadCurrentUser();
       _setLoading(false);
       return true;
     } catch (e) {
@@ -62,9 +83,10 @@ class AuthController with ChangeNotifier {
         email: email,
         password: password,
       );
+
       await result.user?.updateDisplayName(name);
-      _currentUser = result.user;
-      await saveLoginStatus(true);
+      await _createUserProfile(result.user!);
+      await _saveLoginStatus(true);
       _setLoading(false);
       return true;
     } catch (e) {
@@ -89,8 +111,16 @@ class AuthController with ChangeNotifier {
       );
 
       final result = await _auth.signInWithCredential(credential);
-      _currentUser = result.user;
-      await saveLoginStatus(true);
+
+      // Check if user exists
+      final existingUser = await _firebaseService.getUserProfile(result.user!.uid);
+      if (existingUser == null) {
+        await _createUserProfile(result.user!);
+      } else {
+        _currentUser = existingUser;
+      }
+
+      await _saveLoginStatus(true);
       _setLoading(false);
       return true;
     } catch (e) {
@@ -99,12 +129,52 @@ class AuthController with ChangeNotifier {
     }
   }
 
+  Future<void> updateProfile({
+    String? name,
+    String? bio,
+    String? location,
+    String? studentId,
+    List<String>? interests,
+  }) async {
+    if (_currentUser == null) return;
+
+    try {
+      _setLoading(true);
+
+      final updatedUser = _currentUser!.copyWith(
+        name: name,
+        bio: bio,
+        location: location,
+        studentId: studentId,
+        interests: interests,
+      );
+
+      await _firebaseService.updateUserProfile(
+        _currentUser!.id,
+        updatedUser.toJson(),
+      );
+
+      _currentUser = updatedUser;
+      _setLoading(false);
+      notifyListeners();
+    } catch (e) {
+      _setLoading(false);
+      rethrow;
+    }
+  }
+
   Future<void> signOut() async {
     await _auth.signOut();
     await _googleSignIn.signOut();
-    await saveLoginStatus(false);
+    await _saveLoginStatus(false);
     _currentUser = null;
     notifyListeners();
+  }
+
+  Future<void> _saveLoginStatus(bool status) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isLoggedIn', status);
+    _isLoggedIn = status;
   }
 
   void _setLoading(bool loading) {

@@ -1,3 +1,4 @@
+import 'package:buddygoapp/features/auth/presentation/phone_login_screen.dart';
 import 'package:buddygoapp/features/auth/presentation/register_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -233,8 +234,16 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 16),
                 // Phone Button
+                // In login_screen.dart, add after Google button:
                 OutlinedButton(
-                  onPressed: () {},
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const PhoneLoginScreen(),
+                      ),
+                    );
+                  },
                   style: OutlinedButton.styleFrom(
                     foregroundColor: const Color(0xFF1A1D2B),
                     side: const BorderSide(color: Color(0xFFE0E0E0)),

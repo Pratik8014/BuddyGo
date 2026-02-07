@@ -1,3 +1,4 @@
+import 'package:buddygoapp/features/user/presentation/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -50,8 +51,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           radius: 60,
                           backgroundImage: _selectedImageUrl != null
                               ? NetworkImage(_selectedImageUrl!)
-                              : user?.photoURL != null
-                              ? NetworkImage(user!.photoURL!)
+                              : user?.photoUrl != null
+                              ? NetworkImage(user!.photoUrl!)
                               : const AssetImage(
                               'assets/images/default_avatar.png')
                           as ImageProvider,
@@ -77,7 +78,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const SizedBox(height: 16),
                     // User Info
                     Text(
-                      user?.displayName ?? 'Travel Enthusiast',
+                      user?.name ?? 'Travel Enthusiast',
                       style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.w700,
@@ -172,10 +173,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     title: 'Help & Support',
                     onTap: () {},
                   ),
+                  // In profile_screen.dart, add to menu items:
                   _buildMenuItem(
-                    icon: Icons.settings_outlined,
+                    icon: Icons.settings,
                     title: 'Settings',
-                    onTap: () {},
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const SettingsScreen(),
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),

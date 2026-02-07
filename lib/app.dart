@@ -11,20 +11,15 @@ class App extends StatelessWidget {
   Widget build(BuildContext context) {
     final authController = Provider.of<AuthController>(context, listen: true);
 
-    return FutureBuilder(
-      future: authController.checkLoginStatus(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SplashScreen();
-        }
+    if (authController.isLoading) {
+      return const SplashScreen();
+    }
 
-        if (authController.isLoggedIn && authController.currentUser != null) {
-          return const HomeScreen();
-        }
+    if (authController.isLoggedIn && authController.currentUser != null) {
+      return const HomeScreen();
+    }
 
-        return const LoginScreen();
-      },
-    );
+    return const LoginScreen();
   }
 }
 
@@ -84,6 +79,3 @@ class SplashScreen extends StatelessWidget {
     );
   }
 }
-
-
-
