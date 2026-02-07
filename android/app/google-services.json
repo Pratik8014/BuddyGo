@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "500785284766",
+    "firebase_url": "https://buddygo-87468-default-rtdb.firebaseio.com",
+    "project_id": "buddygo-87468",
+    "storage_bucket": "buddygo-87468.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:500785284766:android:3cc887d3eabcb03f381d8f",
+        "android_client_info": {
+          "package_name": "com.example.buddygoapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "500785284766-ema5pmvd0tiouj3ine5pr611vd98469k.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.buddygoapp",
+            "certificate_hash": "726a91012a462020f3aa712ea697ab630207c567"
+          }
+        },
+        {
+          "client_id": "500785284766-ho3klbfki9anet3otdop02q7gtkjvqpc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCG5v5rBqa4OzMyqQT-GkNV_ARJ78ECp-Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "500785284766-ho3klbfki9anet3otdop02q7gtkjvqpc.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "500785284766-epnv3ne1vkr5j9scv697d0rnkjnjvkrf.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.buddygo"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
