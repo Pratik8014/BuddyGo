@@ -59,9 +59,9 @@ class _MyTripsScreenState extends State<MyTripsScreen> {
         }
 
         final trips = snapshot.data ?? [];
-        final upcomingTrips = trips
-            .where((trip) => trip.startDate.isAfter(DateTime.now()))
-            .toList();
+        final upcomingTrips = trips;
+            // .where((trip) => trip.startDate.isAfter(DateTime.now()))
+            // .toList();
 
         return _buildTripList(upcomingTrips);
       },
@@ -77,9 +77,9 @@ class _MyTripsScreenState extends State<MyTripsScreen> {
         }
 
         final trips = snapshot.data ?? [];
-        final pastTrips = trips
-            .where((trip) => trip.endDate.isBefore(DateTime.now()))
-            .toList();
+        final pastTrips = trips;
+            // .where((trip) => trip.endDate.isBefore(DateTime.now()))
+            // .toList();
 
         return _buildTripList(pastTrips);
       },

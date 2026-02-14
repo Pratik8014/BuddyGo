@@ -42,7 +42,7 @@ class DiscoveryController with ChangeNotifier {
         ],
         tags: ['Beach', 'Adventure', 'Party'],
         isPublic: true,
-        createdAt: DateTime(2024),
+        createdAt: DateTime(2026),
       ),
     ];
 

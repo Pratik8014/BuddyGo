@@ -73,14 +73,25 @@ class FirebaseService {
   }
 
   Future<List<Trip>> getTripsByUser(String userId) async {
+    // final snapshot = await tripsCollection
+    //     .where('hostId', isEqualTo: userId)
+    //     .orderBy('createdAt', descending: true)
+    //     .get();
+    //
+    // return snapshot.docs
+    //     .map((doc) => Trip.fromJson(doc.data() as Map<String, dynamic>))
+    //     .toList();
+
     final snapshot = await tripsCollection
         .where('hostId', isEqualTo: userId)
-        .orderBy('createdAt', descending: true)
         .get();
 
-    return snapshot.docs
+    final trips = snapshot.docs
         .map((doc) => Trip.fromJson(doc.data() as Map<String, dynamic>))
-        .toList();
+        .toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    return trips;
   }
 
   Future<void> joinTrip(String tripId, String userId) async {

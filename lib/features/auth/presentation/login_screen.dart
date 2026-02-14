@@ -48,7 +48,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         height: 300,
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
-                            colors: [Color(0xFF7B61FF), Color(0xFF9E8AFF)],
+                            colors: [Color(0xFFE8E1E1), Color(0xFF906CAC)],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
@@ -62,7 +62,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ],
                         ),
                         child: ClipOval(
-                          child: Image.asset('lib/assets/images/Logo4.png'),
+                          child: Image.asset('lib/assets/images/app_icon_foreground.png'),
                         ),
                       ),
                       const SizedBox(height: 32),
