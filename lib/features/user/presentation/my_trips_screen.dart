@@ -7,6 +7,7 @@ import 'package:buddygoapp/features/auth/presentation/auth_controller.dart';
 import 'package:buddygoapp/features/discovery/data/trip_model.dart';
 import 'package:buddygoapp/features/groups/presentation/group_chat_screen.dart';
 
+import '../../discovery/presentation/trip_details_screen.dart';
 import '../../groups/presentation/create_group_screen.dart';
 
 class MyTripsScreen extends StatefulWidget {
@@ -373,7 +374,12 @@ class TripCard extends StatelessWidget {
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () {
-                      // View details
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => TripDetailsScreen(trip: trip),
+                        ),
+                      );
                     },
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFF7B61FF),
