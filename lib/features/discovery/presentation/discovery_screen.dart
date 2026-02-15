@@ -1,3 +1,4 @@
+import 'package:buddygoapp/features/discovery/presentation/trip_details_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -485,7 +486,12 @@ class TripCard extends StatelessWidget {
                       Expanded(
                         child: OutlinedButton(
                           onPressed: () {
-                            // View details
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => TripDetailsScreen(trip: trip),
+                              ),
+                            );
                           },
                           style: OutlinedButton.styleFrom(
                             foregroundColor: const Color(0xFF7B61FF),
