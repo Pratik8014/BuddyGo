@@ -20,7 +20,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   bool _isLoading = false;
 
   final String adminEmail = "buddygo7878@gmail.com";
-  final String adminPassword = "buddygo@123";
+  final String adminPassword = "buddygo@12345";
 
   @override
   Widget build(BuildContext context) {

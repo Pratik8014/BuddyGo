@@ -59,7 +59,7 @@ class MyApp extends StatelessWidget {
         title: 'BuddyGO',
         debugShowCheckedModeBanner: false,
         navigatorKey: navigatorKey, // Add this
-        theme: lightTheme,
+        theme: vibrantNeonTheme,
         darkTheme: darkTheme,
         themeMode: ThemeMode.light,
         home: const App(),

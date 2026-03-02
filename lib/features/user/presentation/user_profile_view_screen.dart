@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:buddygoapp/core/services/firebase_service.dart';
 import 'package:buddygoapp/features/auth/presentation/auth_controller.dart';
 import 'package:buddygoapp/features/safety/presentation/report_screen.dart';
@@ -11,6 +12,65 @@ import 'package:buddygoapp/features/groups/presentation/group_chat_screen.dart';
 import 'package:buddygoapp/features/groups/data/group_model.dart';
 
 import '../../safety/data/report_model.dart';
+
+// ==================== CONSTANTS ====================
+class ProfileViewColors {
+  static const Color primary = Color(0xFF8B5CF6);     // Purple
+  static const Color secondary = Color(0xFFFF6B6B);   // Coral
+  static const Color tertiary = Color(0xFF4FD1C5);    // Teal
+  static const Color accent = Color(0xFFFBBF24);      // Yellow
+  static const Color lavender = Color(0xFF9F7AEA);    // Lavender
+  static const Color success = Color(0xFF06D6A0);     // Mint Green
+  static const Color error = Color(0xFFFF6B6B);       // Coral for errors
+  static const Color warning = Color(0xFFFBBF24);      // Yellow for warnings
+  static const Color background = Color(0xFFF0F2FE);  // Light purple tint
+  static const Color surface = Colors.white;
+  static const Color textPrimary = Color(0xFF1A202C);
+  static const Color textSecondary = Color(0xFF718096);
+  static const Color border = Color(0xFFE2E8F0);
+}
+
+// ==================== LEVEL SYSTEM ====================
+class LevelSystem {
+  static const levels = [
+    {'name': 'Explorer', 'minTrips': 0, 'color': ProfileViewColors.tertiary},
+    {'name': 'Adventurer', 'minTrips': 5, 'color': ProfileViewColors.primary},
+    {'name': 'Globetrotter', 'minTrips': 15, 'color': ProfileViewColors.secondary},
+    {'name': 'Voyager', 'minTrips': 30, 'color': ProfileViewColors.accent},
+    {'name': 'Nomad', 'minTrips': 50, 'color': ProfileViewColors.lavender},
+    {'name': 'Legend', 'minTrips': 100, 'color': ProfileViewColors.success},
+  ];
+
+  static Map<String, dynamic> getLevel(int tripCount) {
+    for (int i = levels.length - 1; i >= 0; i--) {
+      if (tripCount >= (levels[i]['minTrips'] as int)) {
+        return levels[i];
+      }
+    }
+    return levels.first;
+  }
+
+  static double getProgress(int tripCount) {
+    final currentLevel = getLevel(tripCount);
+    final nextLevel = getNextLevel(tripCount);
+
+    if (nextLevel == null) return 1.0;
+
+    final currentMin = currentLevel['minTrips'] as int;
+    final nextMin = nextLevel['minTrips'] as int;
+
+    return (tripCount - currentMin) / (nextMin - currentMin);
+  }
+
+  static Map<String, dynamic>? getNextLevel(int tripCount) {
+    for (int i = 0; i < levels.length; i++) {
+      if (tripCount < (levels[i]['minTrips'] as int )) {
+        return levels[i];
+      }
+    }
+    return null;
+  }
+}
 
 class UserProfileViewScreen extends StatefulWidget {
   final String userId;
@@ -24,7 +84,7 @@ class UserProfileViewScreen extends StatefulWidget {
   State<UserProfileViewScreen> createState() => _UserProfileViewScreenState();
 }
 
-class _UserProfileViewScreenState extends State<UserProfileViewScreen> {
+class _UserProfileViewScreenState extends State<UserProfileViewScreen> with TickerProviderStateMixin {
   final FirebaseService _firebaseService = FirebaseService();
   Map<String, dynamic>? _userData;
   bool _isLoading = true;
@@ -33,19 +93,30 @@ class _UserProfileViewScreenState extends State<UserProfileViewScreen> {
   List<Map<String, dynamic>> _userTrips = [];
   List<Map<String, dynamic>> _mutualGroups = [];
 
+  late AnimationController _pulseAnimationController;
+
   @override
   void initState() {
     super.initState();
+    _pulseAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
     _loadUserData();
     _checkBlockStatus();
     _checkContactStatus();
+  }
+
+  @override
+  void dispose() {
+    _pulseAnimationController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadUserData() async {
     setState(() => _isLoading = true);
 
     try {
-      // Get user profile
       final userDoc = await _firebaseService.usersCollection
           .doc(widget.userId)
           .get();
@@ -54,7 +125,6 @@ class _UserProfileViewScreenState extends State<UserProfileViewScreen> {
         _userData = userDoc.data() as Map<String, dynamic>;
       }
 
-      // Get user's recent trips
       final tripsSnapshot = await _firebaseService.tripsCollection
           .where('hostId', isEqualTo: widget.userId)
           .where('isPublic', isEqualTo: true)
@@ -66,7 +136,6 @@ class _UserProfileViewScreenState extends State<UserProfileViewScreen> {
           .map((doc) => {'id': doc.id, ...doc.data() as Map<String, dynamic>})
           .toList();
 
-      // Get mutual groups
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser != null) {
         final currentUserGroups = await _firebaseService.groupsCollection
@@ -149,30 +218,15 @@ class _UserProfileViewScreenState extends State<UserProfileViewScreen> {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) return;
 
-    final action = _isBlocked ? 'unblock' : 'block';
-
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(_isBlocked ? 'Unblock User' : 'Block User'),
-        content: Text(
-          _isBlocked
-              ? 'Are you sure you want to unblock this user?'
-              : 'Are you sure you want to block this user? You will no longer receive messages from them.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(
-              foregroundColor: _isBlocked ? Colors.green : Colors.red,
-            ),
-            child: Text(_isBlocked ? 'Unblock' : 'Block'),
-          ),
-        ],
+      builder: (context) => _buildActionDialog(
+        title: _isBlocked ? 'Unblock User' : 'Block User',
+        message: _isBlocked
+            ? 'Are you sure you want to unblock this user?'
+            : 'Are you sure you want to block this user? You will no longer receive messages from them.',
+        actionText: _isBlocked ? 'Unblock' : 'Block',
+        actionColor: _isBlocked ? ProfileViewColors.success : ProfileViewColors.error,
       ),
     );
 
@@ -193,23 +247,12 @@ class _UserProfileViewScreenState extends State<UserProfileViewScreen> {
         _isBlocked = !_isBlocked;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _isBlocked
-                ? 'User unblocked successfully'
-                : 'User blocked successfully',
-          ),
-          backgroundColor: _isBlocked ? Colors.green : Colors.red,
-        ),
+      _showSnackbar(
+        _isBlocked ? 'User unblocked successfully' : 'User blocked successfully',
+        isSuccess: !_isBlocked,
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showSnackbar('Error: $e', isError: true);
     }
   }
 
@@ -232,89 +275,56 @@ class _UserProfileViewScreenState extends State<UserProfileViewScreen> {
         _isInContacts = !_isInContacts;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _isInContacts
-                ? 'User added to contacts'
-                : 'User removed from contacts',
-          ),
-          backgroundColor: const Color(0xFF00D4AA),
-        ),
+      _showSnackbar(
+        _isInContacts ? 'User added to contacts' : 'User removed from contacts',
+        isSuccess: true,
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showSnackbar('Error: $e', isError: true);
     }
   }
 
-  Future<void> _startChat() async {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null) return;
-
-    // Check if there's an existing direct message group
-    final existingGroups = await _firebaseService.groupsCollection
-        .where('memberIds', arrayContains: currentUser.uid)
-        .get();
-
-    String? existingGroupId;
-    for (var doc in existingGroups.docs) {
-      final data = doc.data() as Map<String, dynamic>;
-      final members = List<String>.from(data['memberIds'] ?? []);
-      if (members.length == 2 && members.contains(widget.userId)) {
-        existingGroupId = doc.id;
-        break;
-      }
+  void _showSnackbar(String message, {bool isSuccess = false, bool isError = false, bool isInfo= false}) {
+    Color getColor() {
+      if (isError) return ProfileViewColors.error;
+      if (isSuccess) return ProfileViewColors.success;
+      return ProfileViewColors.primary;
     }
 
-  //   if (existingGroupId != null) {
-  //     // Navigate to existing chat
-  //     Navigator.push(
-  //       context,
-  //       MaterialPageRoute(
-  //         builder: (context) => GroupChatScreen(
-  //           groupId: existingGroupId,
-  //           groupName: _userData?['name'] ?? 'Chat',
-  //         ),
-  //       ),
-  //     );
-  //   } else {
-  //     // Create new direct message group
-  //     final newGroup = GroupModel(
-  //       id: '',
-  //       name: _userData?['name'] ?? 'Chat',
-  //       description: 'Direct message',
-  //       createdBy: currentUser.uid,
-  //       createdByName: currentUser.displayName ?? 'User',
-  //       type: GroupType.private,
-  //       maxMembers: 2,
-  //       currentMembers: 2,
-  //       memberIds: [currentUser.uid, widget.userId],
-  //       memberRoles: {
-  //         currentUser.uid: MemberRole.admin,
-  //         widget.userId: MemberRole.member,
-  //       },
-  //       adminIds: [currentUser.uid],
-  //       isJoinApprovalRequired: false,
-  //       isChatEnabled: true,
-  //     );
-  //
-  //     final groupId = await _firebaseService.createGroup(newGroup);
-  //
-  //     Navigator.push(
-  //       context,
-  //       MaterialPageRoute(
-  //         builder: (context) => GroupChatScreen(
-  //           groupId: groupId,
-  //           groupName: _userData?['name'] ?? 'Chat',
-  //         ),
-  //       ),
-  //     );
-  //   }
+    IconData getIcon() {
+      if (isError) return Icons.error_outline;
+      if (isSuccess) return Icons.check_circle;
+      return Icons.info_outline;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(getIcon(), color: Colors.white, size: 16),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                message,
+                style: GoogleFonts.poppins(fontSize: 14, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: getColor(),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   @override
@@ -323,89 +333,153 @@ class _UserProfileViewScreenState extends State<UserProfileViewScreen> {
     final isCurrentUser = authController.currentUser?.id == widget.userId;
 
     return Scaffold(
+      backgroundColor: ProfileViewColors.background,
       appBar: AppBar(
-        title: const Text('User Profile'),
         backgroundColor: Colors.white,
         elevation: 0,
+        leading: Container(
+          margin: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: ProfileViewColors.primary.withOpacity(0.1),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: IconButton(
+            icon: Icon(Icons.arrow_back, color: ProfileViewColors.primary),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ),
+        title: ShaderMask(
+          shaderCallback: (bounds) => const LinearGradient(
+            colors: [ProfileViewColors.primary, ProfileViewColors.secondary],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ).createShader(bounds),
+          child: Text(
+            'User Profile',
+            style: GoogleFonts.poppins(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+        ),
         actions: [
           if (!isCurrentUser)
-            PopupMenuButton(
-              icon: const Icon(Icons.more_vert),
-              itemBuilder: (context) => [
-                PopupMenuItem(
-                  value: 'block',
-                  child: Row(
-                    children: [
-                      Icon(
-                        _isBlocked ? Icons.block_flipped : Icons.block,
-                        color: _isBlocked ? Colors.green : Colors.red,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(_isBlocked ? 'Unblock User' : 'Block User'),
-                    ],
-                  ),
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              decoration: BoxDecoration(
+                color: ProfileViewColors.primary.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: PopupMenuButton(
+                icon: Icon(Icons.more_vert, color: ProfileViewColors.primary),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
                 ),
-                const PopupMenuItem(
-                  value: 'report',
-                  child: Row(
-                    children: [
-                      Icon(Icons.flag, color: Colors.orange, size: 20),
-                      SizedBox(width: 8),
-                      Text('Report User'),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'contact',
-                  child: Row(
-                    children: [
-                      Icon(
-                        _isInContacts ? Icons.star : Icons.star_border,
-                        color: _isInContacts ? Colors.amber : Colors.grey,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(_isInContacts ? 'Remove from Contacts' : 'Add to Contacts'),
-                    ],
-                  ),
-                ),
-              ],
-              onSelected: (value) {
-                switch (value) {
-                  case 'block':
-                    _toggleBlockUser();
-                    break;
-                  case 'report':
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => ReportScreen(
-                          userId: widget.userId,
-                          userName: _userData?['name'] ?? 'User',
-                          userImage: _userData?['photoUrl'],
-                          reportType: ReportType.user,
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'block',
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: _isBlocked ? ProfileViewColors.success.withOpacity(0.1) : ProfileViewColors.error.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            _isBlocked ? Icons.block_flipped : Icons.block,
+                            color: _isBlocked ? ProfileViewColors.success : ProfileViewColors.error,
+                            size: 16,
+                          ),
                         ),
-                      ),
-                    );
-                    break;
-                  case 'contact':
-                    _toggleContact();
-                    break;
-                }
-              },
+                        const SizedBox(width: 12),
+                        Text(_isBlocked ? 'Unblock User' : 'Block User'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'report',
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: ProfileViewColors.warning.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.flag, color: ProfileViewColors.warning, size: 16),
+                        ),
+                        const SizedBox(width: 12),
+                        const Text('Report User'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'contact',
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: _isInContacts ? ProfileViewColors.accent.withOpacity(0.1) : ProfileViewColors.textSecondary.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            _isInContacts ? Icons.star : Icons.star_border,
+                            color: _isInContacts ? ProfileViewColors.accent : ProfileViewColors.textSecondary,
+                            size: 16,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(_isInContacts ? 'Remove from Contacts' : 'Add to Contacts'),
+                      ],
+                    ),
+                  ),
+                ],
+                onSelected: (value) {
+                  switch (value) {
+                    case 'block':
+                      _toggleBlockUser();
+                      break;
+                    case 'report':
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ReportScreen(
+                            userId: widget.userId,
+                            userName: _userData?['name'] ?? 'User',
+                            userImage: _userData?['photoUrl'],
+                            reportType: ReportType.user,
+                          ),
+                        ),
+                      );
+                      break;
+                    case 'contact':
+                      _toggleContact();
+                      break;
+                  }
+                },
+              ),
             ),
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? _buildLoadingState()
           : _userData == null
-          ? const Center(child: Text('User not found'))
+          ? _buildErrorState('User not found')
           : SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Profile Header
+            // Profile Header with Neon Glow
             _buildProfileHeader(),
             const SizedBox(height: 24),
 
@@ -417,35 +491,53 @@ class _UserProfileViewScreenState extends State<UserProfileViewScreen> {
 
             // Bio Section
             if (_userData!['bio'] != null && _userData!['bio'].toString().isNotEmpty)
-              _buildSection(
-                'About',
-                Text(
+              _buildInfoCard(
+                title: 'About',
+                icon: Icons.info_outline,
+                gradientColors: [ProfileViewColors.primary, ProfileViewColors.secondary],
+                child: Text(
                   _userData!['bio'],
-                  style: const TextStyle(
+                  style: GoogleFonts.poppins(
                     fontSize: 14,
-                    height: 1.5,
+                    height: 1.6,
+                    color: ProfileViewColors.textPrimary,
                   ),
                 ),
               ),
             const SizedBox(height: 16),
 
-            // Stats
+            // Stats and Level Section
             _buildStatsSection(),
             const SizedBox(height: 16),
 
-            // Interests
+            // Interests Section
             if (_userData!['interests'] != null && (_userData!['interests'] as List).isNotEmpty)
-              _buildInterestsSection(),
+              _buildInfoCard(
+                title: 'Interests',
+                icon: Icons.interests,
+                gradientColors: [ProfileViewColors.tertiary, ProfileViewColors.success],
+                child: _buildInterestsSection(),
+              ),
             const SizedBox(height: 16),
 
-            // Recent Trips
+            // Recent Trips Section
             if (_userTrips.isNotEmpty)
-              _buildRecentTripsSection(),
+              _buildInfoCard(
+                title: 'Recent Trips',
+                icon: Icons.travel_explore,
+                gradientColors: [ProfileViewColors.secondary, ProfileViewColors.accent],
+                child: _buildRecentTripsSection(),
+              ),
             const SizedBox(height: 16),
 
-            // Mutual Groups
+            // Mutual Groups Section
             if (_mutualGroups.isNotEmpty)
-              _buildMutualGroupsSection(),
+              _buildInfoCard(
+                title: 'Mutual Groups',
+                icon: Icons.group,
+                gradientColors: [ProfileViewColors.lavender, ProfileViewColors.primary],
+                child: _buildMutualGroupsSection(),
+              ),
             const SizedBox(height: 24),
 
             // Block Status Warning
@@ -453,18 +545,35 @@ class _UserProfileViewScreenState extends State<UserProfileViewScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.red),
+                  gradient: LinearGradient(
+                    colors: [ProfileViewColors.error.withOpacity(0.1), ProfileViewColors.secondary.withOpacity(0.05)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: ProfileViewColors.error.withOpacity(0.3),
+                    width: 1,
+                  ),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.block, color: Colors.red),
-                    SizedBox(width: 12),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: ProfileViewColors.error.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.block, color: ProfileViewColors.error),
+                    ),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         'You have blocked this user. You will not receive any messages from them.',
-                        style: TextStyle(color: Colors.red),
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          color: ProfileViewColors.error,
+                        ),
                       ),
                     ),
                   ],
@@ -476,34 +585,126 @@ class _UserProfileViewScreenState extends State<UserProfileViewScreen> {
     );
   }
 
+  Widget _buildLoadingState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [ProfileViewColors.primary.withOpacity(0.1), ProfileViewColors.secondary.withOpacity(0.1)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              shape: BoxShape.circle,
+            ),
+            child: const CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(ProfileViewColors.primary),
+              strokeWidth: 3,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'Loading profile...',
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              color: ProfileViewColors.textSecondary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState(String message) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: ProfileViewColors.error.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.error_outline, size: 64, color: ProfileViewColors.error),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            message,
+            style: GoogleFonts.poppins(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: ProfileViewColors.textPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildProfileHeader() {
     final isVerified = _userData?['isVerifiedTraveler'] == true;
 
     return Column(
       children: [
-        // Profile Image
-        CircleAvatar(
-          radius: 60,
-          backgroundImage: _userData!['photoUrl'] != null
-              ? CachedNetworkImageProvider(_userData!['photoUrl'])
-              : const NetworkImage(
-            'https://th.bing.com/th/id/OIP.0AKX_YJS6w3y215EcZ-WAAAAAA?w=151&h=180&c=7&r=0&o=7&dpr=1.3&pid=1.7&rm=3',
-          ),
-          child: _userData!['photoUrl'] == null
-              ? Text(
-            _userData!['name']?[0].toUpperCase() ?? '?',
-            style: const TextStyle(fontSize: 30),
-          )
-              : null,
+        // Animated Avatar with Glow
+        AnimatedBuilder(
+          animation: _pulseAnimationController,
+          builder: (context, child) {
+            return Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                gradient: const RadialGradient(
+                  colors: [
+                    ProfileViewColors.primary,
+                    ProfileViewColors.secondary,
+                    ProfileViewColors.tertiary,
+                  ],
+                  stops: [0.3, 0.6, 0.9],
+                ),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: ProfileViewColors.primary.withOpacity(0.3 * _pulseAnimationController.value),
+                    blurRadius: 20,
+                    spreadRadius: 5 * _pulseAnimationController.value,
+                  ),
+                ],
+              ),
+              child: CircleAvatar(
+                radius: 60,
+                backgroundColor: ProfileViewColors.background,
+                backgroundImage: _userData!['photoUrl'] != null
+                    ? CachedNetworkImageProvider(_userData!['photoUrl'])
+                    : null,
+                child: _userData!['photoUrl'] == null
+                    ? Text(
+                  _userData!['name']?[0].toUpperCase() ?? '?',
+                  style: GoogleFonts.poppins(
+                    fontSize: 40,
+                    fontWeight: FontWeight.w700,
+                    color: ProfileViewColors.primary,
+                  ),
+                )
+                    : null,
+              ),
+            );
+          },
         ),
         const SizedBox(height: 16),
 
         // Name
         Text(
           _userData!['name'] ?? 'Unknown User',
-          style: const TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
+          style: GoogleFonts.poppins(
+            fontSize: 26,
+            fontWeight: FontWeight.w800,
+            color: ProfileViewColors.textPrimary,
+            letterSpacing: -0.5,
           ),
         ),
         const SizedBox(height: 8),
@@ -511,9 +712,9 @@ class _UserProfileViewScreenState extends State<UserProfileViewScreen> {
         // Email
         Text(
           _userData!['email'] ?? '',
-          style: TextStyle(
+          style: GoogleFonts.poppins(
             fontSize: 14,
-            color: Colors.grey[600],
+            color: ProfileViewColors.textSecondary,
           ),
         ),
         const SizedBox(height: 12),
@@ -523,13 +724,13 @@ class _UserProfileViewScreenState extends State<UserProfileViewScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.location_on, size: 16, color: Colors.grey[400]),
+              Icon(Icons.location_on, size: 16, color: ProfileViewColors.textSecondary),
               const SizedBox(width: 4),
               Text(
                 _userData!['location'],
-                style: TextStyle(
+                style: GoogleFonts.poppins(
                   fontSize: 14,
-                  color: Colors.grey[600],
+                  color: ProfileViewColors.textSecondary,
                 ),
               ),
             ],
@@ -539,28 +740,34 @@ class _UserProfileViewScreenState extends State<UserProfileViewScreen> {
         // Verification Badge
         if (isVerified)
           Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 8,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             decoration: BoxDecoration(
-              color: const Color(0xFF00D4AA).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
+              gradient: LinearGradient(
+                colors: [ProfileViewColors.success.withOpacity(0.1), ProfileViewColors.tertiary.withOpacity(0.05)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(
+                color: ProfileViewColors.success.withOpacity(0.3),
+                width: 1,
+              ),
             ),
-            child: const Row(
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
+                const Icon(
                   Icons.verified,
                   size: 16,
-                  color: Color(0xFF00D4AA),
+                  color: ProfileViewColors.success,
                 ),
-                SizedBox(width: 8),
+                const SizedBox(width: 8),
                 Text(
                   'Verified Traveler',
-                  style: TextStyle(
-                    color: Color(0xFF00D4AA),
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
                     fontWeight: FontWeight.w600,
+                    color: ProfileViewColors.success,
                   ),
                 ),
               ],
@@ -572,13 +779,13 @@ class _UserProfileViewScreenState extends State<UserProfileViewScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.calendar_today, size: 14, color: Colors.grey[400]),
+            Icon(Icons.calendar_today, size: 14, color: ProfileViewColors.textSecondary),
             const SizedBox(width: 4),
             Text(
               'Joined ${_formatJoinDate(_userData!['createdAt'])}',
-              style: TextStyle(
+              style: GoogleFonts.poppins(
                 fontSize: 12,
-                color: Colors.grey[500],
+                color: ProfileViewColors.textSecondary,
               ),
             ),
           ],
@@ -591,31 +798,97 @@ class _UserProfileViewScreenState extends State<UserProfileViewScreen> {
     return Row(
       children: [
         Expanded(
-          child: ElevatedButton.icon(
-            onPressed: _isBlocked ? null : _startChat,
-            icon: const Icon(Icons.message),
-            label: const Text('Message'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF7B61FF),
-              padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Container(
+            height: 48,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [ProfileViewColors.primary, ProfileViewColors.secondary],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: ProfileViewColors.primary.withOpacity(0.3),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: _isBlocked ? null : _startChat,
+                borderRadius: BorderRadius.circular(16),
+                child: Center(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.message, color: Colors.white, size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Message',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: OutlinedButton.icon(
-            onPressed: _toggleBlockUser,
-            icon: Icon(
-              _isBlocked ? Icons.block_flipped : Icons.block,
-              color: _isBlocked ? Colors.green : Colors.red,
-            ),
-            label: Text(_isBlocked ? 'Unblock' : 'Block'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: _isBlocked ? Colors.green : Colors.red,
-              side: BorderSide(
-                color: _isBlocked ? Colors.green : Colors.red,
+          child: Container(
+            height: 48,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: _isBlocked
+                    ? [ProfileViewColors.success, ProfileViewColors.tertiary]
+                    : [ProfileViewColors.error, ProfileViewColors.secondary],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              padding: const EdgeInsets.symmetric(vertical: 12),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: _isBlocked ? ProfileViewColors.success.withOpacity(0.3) : ProfileViewColors.error.withOpacity(0.3),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: _toggleBlockUser,
+                borderRadius: BorderRadius.circular(16),
+                child: Center(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        _isBlocked ? Icons.block_flipped : Icons.block,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _isBlocked ? 'Unblock' : 'Block',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -624,199 +897,519 @@ class _UserProfileViewScreenState extends State<UserProfileViewScreen> {
   }
 
   Widget _buildStatsSection() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            FutureBuilder<QuerySnapshot>(
-              future: FirebaseFirestore.instance
-                  .collection('trips')
-                  .where('hostId', isEqualTo: widget.userId)
-                  .get(),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return _buildUserStat('Trips', 'Trips');
-                }
+    return FutureBuilder<QuerySnapshot>(
+      future: FirebaseFirestore.instance
+          .collection('trips')
+          .where('hostId', isEqualTo: widget.userId)
+          .get(),
+      builder: (context, snapshot) {
+        final tripCount = snapshot.data?.docs.length ?? 0;
+        final level = LevelSystem.getLevel(tripCount);
+        final progress = LevelSystem.getProgress(tripCount);
+        final nextLevel = LevelSystem.getNextLevel(tripCount);
 
-                return _buildUserStat(
-                  'Trips',
-                  snapshot.data!.docs.length.toString(),
-                );
-              },
-            ),
-            _buildStatItem('Reviews', '${_userData!['totalReviews'] ?? 0}'),
-            _buildStatItem('Rating', '${_userData!['rating'] ?? 5}/5'),
-          ],
-        ),
-      ),
+        return Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: ProfileViewColors.primary.withOpacity(0.1),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              // Stats Row (Trips and Level only - removed rating)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _buildStatItem(
+                    label: 'Trips',
+                    value: '$tripCount',
+                    color: ProfileViewColors.primary,
+                  ),
+                  Container(
+                    width: 1,
+                    height: 40,
+                    color: ProfileViewColors.border,
+                  ),
+                  _buildStatItem(
+                    label: 'Level',
+                    value: level['name'],
+                    color: level['color'],
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 16),
+
+              // Level Progress Bar
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        level['name'],
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: level['color'],
+                        ),
+                      ),
+                      if (nextLevel != null)
+                        Text(
+                          nextLevel['name'],
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: ProfileViewColors.textSecondary,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Stack(
+                    children: [
+                      Container(
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: ProfileViewColors.border,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                      ),
+                      FractionallySizedBox(
+                        widthFactor: progress,
+                        child: Container(
+                          height: 8,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [level['color'], ProfileViewColors.secondary],
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                            ),
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: level['color'].withOpacity(0.3),
+                                blurRadius: 8,
+                                spreadRadius: 1,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (nextLevel != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '${tripCount}/${nextLevel['minTrips']} trips to reach ${nextLevel['name']}',
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        color: ProfileViewColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildStatItem(String label, String value) {
+  Widget _buildStatItem({required String label, required String value, required Color color}) {
     return Column(
       children: [
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF1A1D2B),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            value,
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
           ),
         ),
         const SizedBox(height: 4),
         Text(
           label,
-          style: const TextStyle(
+          style: GoogleFonts.poppins(
             fontSize: 12,
-            color: Color(0xFF6E7A8A),
+            color: ProfileViewColors.textSecondary,
+            fontWeight: FontWeight.w500,
           ),
         ),
       ],
     );
   }
-  Widget _buildUserStat(String label, String value) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF1A1D2B),
+
+  Widget _buildInfoCard({
+    required String title,
+    required IconData icon,
+    required List<Color> gradientColors,
+    required Widget child,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: gradientColors.first.withOpacity(0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
-        ),
-        Text(label, style: TextStyle(fontSize: 12, color: Color(0xFF6E7A8A))),
-      ],
-    );
-  }
-  Widget _buildInterestsSection() {
-    final interests = _userData!['interests'] as List;
-
-    return _buildSection(
-      'Interests',
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: interests.map((interest) {
-          return Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 6,
-            ),
-            decoration: BoxDecoration(
-              color: const Color(0xFF7B61FF).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              interest,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Color(0xFF7B61FF),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          );
-        }).toList(),
+        ],
       ),
-    );
-  }
-
-  Widget _buildRecentTripsSection() {
-    return _buildSection(
-      'Recent Trips',
-      Column(
-        children: _userTrips.map((trip) {
-          return ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(8),
-                image: trip['images'] != null && (trip['images'] as List).isNotEmpty
-                    ? DecorationImage(
-                  image: CachedNetworkImageProvider(trip['images'][0]),
-                  fit: BoxFit.cover,
-                )
-                    : null,
-              ),
-              child: trip['images'] == null || (trip['images'] as List).isEmpty
-                  ? const Icon(Icons.image, color: Colors.grey)
-                  : null,
-            ),
-            title: Text(
-              trip['title'] ?? 'Untitled',
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            subtitle: Text(trip['destination'] ?? 'Unknown'),
-            trailing: Text(
-              '${trip['currentMembers'] ?? 0}/${trip['maxMembers'] ?? 0}',
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  Widget _buildMutualGroupsSection() {
-    return _buildSection(
-      'Mutual Groups',
-      Column(
-        children: _mutualGroups.map((group) {
-          return ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: CircleAvatar(
-              radius: 20,
-              backgroundImage: group['image'] != null
-                  ? CachedNetworkImageProvider(group['image'])
-                  : null,
-              child: group['image'] == null
-                  ? Text(group['name'][0].toUpperCase())
-                  : null,
-            ),
-            title: Text(group['name']),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => GroupChatScreen(
-                    groupId: group['id'],
-                    groupName: group['name'],
-                  ),
-                ),
-              );
-            },
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  Widget _buildSection(String title, Widget content) {
-    return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: gradientColors,
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, color: Colors.white, size: 16),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  title,
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: ProfileViewColors.textPrimary,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
-            content,
+            child,
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildInterestsSection() {
+    final interests = _userData!['interests'] as List;
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: interests.map((interest) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [ProfileViewColors.primary.withOpacity(0.1), ProfileViewColors.secondary.withOpacity(0.05)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(
+              color: ProfileViewColors.primary.withOpacity(0.3),
+              width: 1,
+            ),
+          ),
+          child: Text(
+            interest,
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              color: ProfileViewColors.primary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildRecentTripsSection() {
+    return Column(
+      children: _userTrips.map((trip) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            children: [
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [ProfileViewColors.primary, ProfileViewColors.secondary],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: trip['images'] != null && (trip['images'] as List).isNotEmpty
+                      ? CachedNetworkImage(
+                    imageUrl: trip['images'][0],
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) => Container(color: Colors.grey[100]),
+                    errorWidget: (context, url, error) => const Icon(Icons.image, color: Colors.white),
+                  )
+                      : const Icon(Icons.image, color: Colors.white),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      trip['title'] ?? 'Untitled',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: ProfileViewColors.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      trip['destination'] ?? 'Unknown',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: ProfileViewColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: ProfileViewColors.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${trip['currentMembers'] ?? 0}/${trip['maxMembers'] ?? 0}',
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: ProfileViewColors.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildMutualGroupsSection() {
+    return Column(
+      children: _mutualGroups.map((group) {
+        return InkWell(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => GroupChatScreen(
+                  groupId: group['id'],
+                  groupName: group['name'],
+                ),
+              ),
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [ProfileViewColors.lavender, ProfileViewColors.primary],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    shape: BoxShape.circle,
+                  ),
+                  child: ClipOval(
+                    child: group['image'] != null
+                        ? CachedNetworkImage(
+                      imageUrl: group['image'],
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => Container(color: Colors.grey[100]),
+                      errorWidget: (context, url, error) => const Icon(Icons.group, color: Colors.white),
+                    )
+                        : const Icon(Icons.group, color: Colors.white),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    group['name'],
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: ProfileViewColors.textPrimary,
+                    ),
+                  ),
+                ),
+                const Icon(Icons.arrow_forward_ios, size: 14, color: ProfileViewColors.textSecondary),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildActionDialog({
+    required String title,
+    required String message,
+    required String actionText,
+    required Color actionColor,
+  }) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(30),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 30,
+              offset: const Offset(0, 15),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: actionColor.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  actionText == 'Block' ? Icons.block :
+                  actionText == 'Unblock' ? Icons.block_flipped :
+                  actionText == 'Report' ? Icons.flag : Icons.warning,
+                  color: actionColor,
+                  size: 32,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                title,
+                style: GoogleFonts.poppins(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: ProfileViewColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  color: ProfileViewColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 28),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: Text(
+                        'Cancel',
+                        style: GoogleFonts.poppins(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: ProfileViewColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [actionColor, actionColor.withOpacity(0.8)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: actionColor.withOpacity(0.3),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          foregroundColor: Colors.white,
+                          shadowColor: Colors.transparent,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: Text(
+                          actionText,
+                          style: GoogleFonts.poppins(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _startChat() {
+    _showSnackbar('Chat feature coming soon!', isInfo: true);
   }
 
   String _formatJoinDate(dynamic date) {

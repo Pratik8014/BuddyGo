@@ -3,12 +3,31 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
+import 'package:google_fonts/google_fonts.dart' hide Config;
+import 'package:badges/badges.dart' as badges;
 import 'package:buddygoapp/core/services/firebase_service.dart';
 import 'package:buddygoapp/features/auth/presentation/auth_controller.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 
 import 'group_members_screen.dart';
 
+// ==================== CONSTANTS ====================
+class ChatColors {
+  static const Color primary = Color(0xFF8B5CF6);     // Purple
+  static const Color secondary = Color(0xFFFF6B6B);   // Coral
+  static const Color tertiary = Color(0xFF4FD1C5);    // Teal
+  static const Color accent = Color(0xFFFBBF24);      // Yellow
+  static const Color lavender = Color(0xFF9F7AEA);    // Lavender
+  static const Color success = Color(0xFF06D6A0);     // Mint Green
+  static const Color error = Color(0xFFFF6B6B);       // Coral for errors
+  static const Color background = Color(0xFFF0F2FE);  // Light purple tint
+  static const Color surface = Colors.white;
+  static const Color textPrimary = Color(0xFF1A202C);
+  static const Color textSecondary = Color(0xFF718096);
+  static const Color border = Color(0xFFE2E8F0);
+}
+
+// ==================== GROUP CHAT SCREEN ====================
 class GroupChatScreen extends StatefulWidget {
   final String groupId;
   final String groupName;
@@ -30,11 +49,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
   final FirebaseService _firebaseService = FirebaseService();
 
   bool _isSending = false;
-  int _onlineCount = 0;
-  int _memberCount = 0;
   bool _isEmojiPickerVisible = false;
 
-  // 🔥 FIXED: Use ValueNotifier instead of multiple streams
+  // Using ValueNotifier for reactive updates
   final ValueNotifier<int> _onlineCountNotifier = ValueNotifier<int>(0);
   final ValueNotifier<int> _memberCountNotifier = ValueNotifier<int>(0);
 
@@ -45,6 +62,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
   // Animation controllers
   late AnimationController _fadeAnimationController;
   late Animation<double> _fadeAnimation;
+  late AnimationController _sendButtonAnimationController;
 
   @override
   void initState() {
@@ -53,11 +71,16 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
     // Initialize animations
     _fadeAnimationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 400),
     );
     _fadeAnimation = CurvedAnimation(
       parent: _fadeAnimationController,
       curve: Curves.easeInOut,
+    );
+
+    _sendButtonAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
     );
 
     _fadeAnimationController.forward();
@@ -67,9 +90,13 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
 
     _messageController.addListener(() {
       setState(() {});
+      if (_messageController.text.isNotEmpty) {
+        _sendButtonAnimationController.forward();
+      } else {
+        _sendButtonAnimationController.reverse();
+      }
     });
 
-    // Add focus listener to hide emoji picker when keyboard is closed
     _focusNode.addListener(() {
       if (_focusNode.hasFocus) {
         setState(() {
@@ -84,31 +111,26 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
     _messageController.dispose();
     _scrollController.dispose();
     _fadeAnimationController.dispose();
+    _sendButtonAnimationController.dispose();
     _focusNode.dispose();
     _onlineCountNotifier.dispose();
     _memberCountNotifier.dispose();
     super.dispose();
   }
 
-  // 🔥 FIXED: Use single calls instead of streams
   void _initializeCounts() {
-    // Get total members count from group document
     _firebaseService.getGroupById(widget.groupId).then((group) {
       if (group != null && mounted) {
-        _memberCount = group.currentMembers;
         _memberCountNotifier.value = group.currentMembers;
-        // Set online count as percentage of members
-        _onlineCount = (group.currentMembers * 0.6).round();
         _onlineCountNotifier.value = (group.currentMembers * 0.6).round();
         setState(() {});
       }
     });
 
-    // Update online count periodically (simulated)
+    // Update online count periodically
     Future.delayed(const Duration(seconds: 5), () {
       if (mounted) {
-        _onlineCount = (_memberCount * 0.6).round();
-        _onlineCountNotifier.value = (_memberCount * 0.6).round();
+        _onlineCountNotifier.value = (_memberCountNotifier.value * 0.6).round();
         setState(() {});
       }
     });
@@ -154,45 +176,37 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
 
       _scrollToBottom();
     } catch (e) {
-      _showErrorSnackbar('Error sending message: $e');
+      _showSnackbar('Error sending message: $e', isError: true);
     } finally {
       setState(() => _isSending = false);
     }
   }
 
-  void _showErrorSnackbar(String message) {
+  void _showSnackbar(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
           children: [
-            Icon(Icons.error_outline, color: Colors.white),
+            Icon(
+              isError ? Icons.error_outline : Icons.check_circle,
+              color: Colors.white,
+              size: 20,
+            ),
             const SizedBox(width: 12),
-            Expanded(child: Text(message)),
+            Expanded(
+              child: Text(
+                message,
+                style: GoogleFonts.poppins(fontSize: 14),
+              ),
+            ),
           ],
         ),
-        backgroundColor: const Color(0xFFFF647C),
+        backgroundColor: isError ? ChatColors.error : ChatColors.success,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 3),
       ),
-    );
-  }
-
-  void _showSuccessSnackbar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.white),
-              const SizedBox(width: 12),
-              Expanded(child: Text(message)),
-            ],
-          ),
-          backgroundColor: const Color(0xFF00D4AA),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: const EdgeInsets.all(16),
-    ),
     );
   }
 
@@ -214,9 +228,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
       }
 
       _exitSelectionMode();
-      _showSuccessSnackbar('Messages deleted successfully');
+      _showSnackbar('Messages deleted successfully');
     } catch (e) {
-      _showErrorSnackbar('Error deleting messages: $e');
+      _showSnackbar('Error deleting messages: $e', isError: true);
     } finally {
       setState(() => _isSending = false);
     }
@@ -232,8 +246,8 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.2),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
+              blurRadius: 30,
+              offset: const Offset(0, 15),
             ),
           ],
         ),
@@ -245,30 +259,30 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFF647C).withOpacity(0.1),
+                  color: ChatColors.error.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   Icons.delete_outline,
-                  color: Color(0xFFFF647C),
+                  color: ChatColors.error,
                   size: 32,
                 ),
               ),
               const SizedBox(height: 20),
-              const Text(
+              Text(
                 'Delete Messages',
-                style: TextStyle(
+                style: GoogleFonts.poppins(
                   fontSize: 22,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF1A1D2B),
+                  color: ChatColors.textPrimary,
                 ),
               ),
               const SizedBox(height: 12),
               Text(
                 'Are you sure you want to delete ${_selectedMessageIds.length} message(s)? This action cannot be undone.',
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Color(0xFF6E7A8A),
+                style: GoogleFonts.poppins(
+                  color: ChatColors.textSecondary,
                   fontSize: 15,
                   height: 1.4,
                 ),
@@ -282,14 +296,15 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
                       style: TextButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(16),
                         ),
                       ),
-                      child: const Text(
+                      child: Text(
                         'Cancel',
-                        style: TextStyle(
+                        style: GoogleFonts.poppins(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
+                          color: ChatColors.textSecondary,
                         ),
                       ),
                     ),
@@ -299,17 +314,17 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
                     child: ElevatedButton(
                       onPressed: () => Navigator.pop(context, true),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFF647C),
+                        backgroundColor: ChatColors.error,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(16),
                         ),
                         elevation: 0,
                       ),
-                      child: const Text(
+                      child: Text(
                         'Delete',
-                        style: TextStyle(
+                        style: GoogleFonts.poppins(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                         ),
@@ -375,7 +390,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
     final currentUserId = authController.currentUser?.id;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
+      backgroundColor: ChatColors.background,
       appBar: _isSelectionMode ? _buildSelectionAppBar() : _buildNormalAppBar(),
       body: SafeArea(
         child: FadeTransition(
@@ -429,7 +444,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
                             duration: const Duration(milliseconds: 200),
                             curve: Curves.easeInOut,
                             color: isSelected
-                                ? const Color(0xFF7B61FF).withOpacity(0.1)
+                                ? ChatColors.primary.withOpacity(0.1)
                                 : Colors.transparent,
                             margin: EdgeInsets.only(
                               top: index > 0 &&
@@ -437,15 +452,14 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
                                   ? 4
                                   : 16,
                             ),
-                            child: ChatBubble(
+                            child: EnhancedChatBubble(
                               message: ChatMessage(
                                 id: doc.id,
                                 senderId: data['userId'] ?? '',
                                 senderName: data['userName'] ?? 'Unknown',
                                 senderImage: data['userImage'],
                                 text: data['text'] ?? '',
-                                timestamp:
-                                data['timestamp']?.toDate() ?? DateTime.now(),
+                                timestamp: data['timestamp']?.toDate() ?? DateTime.now(),
                                 isMe: isMe,
                               ),
                               isSelected: isSelected,
@@ -472,54 +486,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
 
               // Emoji Picker
               if (_isEmojiPickerVisible)
-                Container(
-                  height: 300,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(24),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, -5),
-                      ),
-                    ],
-                  ),
-                  child: EmojiPicker(
-                    textEditingController: _messageController,
-                    onEmojiSelected: (category, emoji) {
-                      _messageController
-                        ..text += emoji.emoji
-                        ..selection = TextSelection.fromPosition(
-                          TextPosition(offset: _messageController.text.length),
-                        );
-                    },
-                    config: const Config(
-                      height: 300,
-                      checkPlatformCompatibility: true,
-                      emojiViewConfig: EmojiViewConfig(
-                        columns: 7,
-                        emojiSizeMax: 32,
-                        verticalSpacing: 0,
-                        horizontalSpacing: 0,
-                      ),
-                      categoryViewConfig: CategoryViewConfig(
-                        indicatorColor: Color(0xFF7B61FF),
-                        iconColor: Colors.grey,
-                        iconColorSelected: Color(0xFF7B61FF),
-                      ),
-                      bottomActionBarConfig: BottomActionBarConfig(
-                        enabled: true,
-                        backgroundColor: Colors.white,
-                      ),
-                      searchViewConfig: SearchViewConfig(
-                        backgroundColor: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
+                _buildEmojiPicker(),
             ],
           ),
         ),
@@ -529,23 +496,24 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
 
   Widget _buildTypingIndicator() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       color: Colors.white,
       child: Row(
         children: [
-          const SizedBox(
-            width: 8,
-            height: 8,
-            child: CircularProgressIndicator(
+          Container(
+            width: 24,
+            height: 24,
+            padding: const EdgeInsets.all(4),
+            child: const CircularProgressIndicator(
               strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF7B61FF)),
+              valueColor: AlwaysStoppedAnimation<Color>(ChatColors.primary),
             ),
           ),
           const SizedBox(width: 12),
           Text(
             'Sending message...',
-            style: TextStyle(
-              color: Colors.grey[600],
+            style: GoogleFonts.poppins(
+              color: ChatColors.textSecondary,
               fontSize: 13,
               fontWeight: FontWeight.w500,
             ),
@@ -557,54 +525,63 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
 
   Widget _buildErrorState(String error) {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.red.withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.error_outline,
-              color: Colors.red,
-              size: 48,
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'Something went wrong',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF1A1D2B),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            error,
-            style: const TextStyle(
-              color: Color(0xFF6E7A8A),
-              fontSize: 14,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton(
-            onPressed: () => setState(() {}),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF7B61FF),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: ChatColors.error.withOpacity(0.1),
+                shape: BoxShape.circle,
               ),
-              elevation: 0,
+              child: const Icon(
+                Icons.error_outline,
+                color: ChatColors.error,
+                size: 64,
+              ),
             ),
-            child: const Text('Try Again'),
-          ),
-        ],
+            const SizedBox(height: 24),
+            Text(
+              'Something went wrong',
+              style: GoogleFonts.poppins(
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                color: ChatColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              error.length > 100 ? '${error.substring(0, 100)}...' : error,
+              style: GoogleFonts.poppins(
+                color: ChatColors.textSecondary,
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () => setState(() {}),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: ChatColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                elevation: 0,
+              ),
+              child: Text(
+                'Try Again',
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -615,22 +592,22 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: const Color(0xFF7B61FF).withOpacity(0.1),
+              color: ChatColors.primary.withOpacity(0.1),
               shape: BoxShape.circle,
             ),
             child: const CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF7B61FF)),
+              valueColor: AlwaysStoppedAnimation<Color>(ChatColors.primary),
               strokeWidth: 3,
             ),
           ),
           const SizedBox(height: 24),
           Text(
             'Loading messages...',
-            style: TextStyle(
+            style: GoogleFonts.poppins(
               fontSize: 16,
-              color: Colors.grey[600],
+              color: ChatColors.textSecondary,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -645,32 +622,37 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.all(28),
+            padding: const EdgeInsets.all(32),
             decoration: BoxDecoration(
-              color: const Color(0xFF7B61FF).withOpacity(0.1),
+              gradient: LinearGradient(
+                colors: [ChatColors.primary.withOpacity(0.1), ChatColors.secondary.withOpacity(0.1)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
               shape: BoxShape.circle,
             ),
             child: const Icon(
               Icons.chat_bubble_outline,
-              size: 64,
-              color: Color(0xFF7B61FF),
+              size: 80,
+              color: ChatColors.primary,
             ),
           ),
           const SizedBox(height: 28),
-          const Text(
+          Text(
             'No messages yet',
-            style: TextStyle(
-              fontSize: 24,
+            style: GoogleFonts.poppins(
+              fontSize: 26,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF1A1D2B),
+              color: ChatColors.textPrimary,
+              letterSpacing: -0.5,
             ),
           ),
           const SizedBox(height: 12),
           Text(
             'Be the first to start the conversation!',
-            style: TextStyle(
+            style: GoogleFonts.poppins(
               fontSize: 16,
-              color: Colors.grey[600],
+              color: ChatColors.textSecondary,
               height: 1.4,
             ),
           ),
@@ -684,12 +666,17 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.03),
-            blurRadius: 10,
+            blurRadius: 15,
             offset: const Offset(0, -5),
+          ),
+          BoxShadow(
+            color: ChatColors.primary.withOpacity(0.05),
+            blurRadius: 20,
+            spreadRadius: 0,
           ),
         ],
       ),
@@ -703,7 +690,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
               _buildIconButton(
                 icon: Icons.attach_file_outlined,
                 onPressed: () {
-                  // TODO: Implement attachment
+                  _showSnackbar('Attachment feature coming soon!');
                 },
               ),
 
@@ -714,12 +701,12 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
                 child: Container(
                   constraints: const BoxConstraints(maxHeight: 120),
                   decoration: BoxDecoration(
-                    color: Colors.grey[50],
-                    borderRadius: BorderRadius.circular(24),
+                    color: ChatColors.background,
+                    borderRadius: BorderRadius.circular(28),
                     border: Border.all(
                       color: _messageController.text.isNotEmpty
-                          ? const Color(0xFF7B61FF).withOpacity(0.3)
-                          : Colors.grey[200]!,
+                          ? ChatColors.primary.withOpacity(0.3)
+                          : ChatColors.border,
                       width: 1.5,
                     ),
                   ),
@@ -732,8 +719,8 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
                           focusNode: _focusNode,
                           decoration: InputDecoration(
                             hintText: 'Type a message...',
-                            hintStyle: TextStyle(
-                              color: Colors.grey[500],
+                            hintStyle: GoogleFonts.poppins(
+                              color: ChatColors.textSecondary,
                               fontSize: 15,
                             ),
                             border: InputBorder.none,
@@ -745,9 +732,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
                           maxLines: null,
                           keyboardType: TextInputType.multiline,
                           textCapitalization: TextCapitalization.sentences,
-                          style: const TextStyle(
+                          style: GoogleFonts.poppins(
                             fontSize: 15,
-                            color: Color(0xFF1A1D2B),
+                            color: ChatColors.textPrimary,
                           ),
                           onSubmitted: (_) => _sendMessage(),
                         ),
@@ -760,8 +747,8 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
                             : Icons.emoji_emotions_outlined,
                         onPressed: _toggleEmojiPicker,
                         color: _isEmojiPickerVisible
-                            ? const Color(0xFF7B61FF)
-                            : Colors.grey[600],
+                            ? ChatColors.primary
+                            : ChatColors.textSecondary,
                       ),
                     ],
                   ),
@@ -770,8 +757,14 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
 
               const SizedBox(width: 8),
 
-              // Send Button
-              _buildSendButton(),
+              // Send Button with Animation
+              ScaleTransition(
+                scale: CurvedAnimation(
+                  parent: _sendButtonAnimationController,
+                  curve: Curves.elasticOut,
+                ),
+                child: _buildSendButton(),
+              ),
             ],
           ),
         ],
@@ -786,16 +779,21 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.transparent,
+      ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onPressed,
           customBorder: const CircleBorder(),
+          splashColor: ChatColors.primary.withOpacity(0.1),
           child: Container(
             padding: const EdgeInsets.all(10),
             child: Icon(
               icon,
-              color: color ?? Colors.grey[600],
+              color: color ?? ChatColors.textSecondary,
               size: 24,
             ),
           ),
@@ -816,7 +814,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
           shape: BoxShape.circle,
           gradient: isEnabled
               ? const LinearGradient(
-            colors: [Color(0xFF7B61FF), Color(0xFF9D8CFF)],
+            colors: [ChatColors.primary, ChatColors.secondary],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           )
@@ -828,9 +826,14 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
           boxShadow: isEnabled
               ? [
             BoxShadow(
-              color: const Color(0xFF7B61FF).withOpacity(0.3),
+              color: ChatColors.primary.withOpacity(0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
+            ),
+            BoxShadow(
+              color: ChatColors.secondary.withOpacity(0.2),
               blurRadius: 8,
-              offset: const Offset(0, 4),
+              offset: const Offset(0, 3),
             ),
           ]
               : [],
@@ -840,6 +843,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
           child: InkWell(
             onTap: isEnabled ? _sendMessage : null,
             customBorder: const CircleBorder(),
+            splashColor: Colors.white.withOpacity(0.3),
             child: Container(
               padding: const EdgeInsets.all(14),
               child: Icon(
@@ -854,20 +858,69 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
     );
   }
 
-  // 🔥 FIXED: AppBar with ValueListenableBuilder instead of StreamBuilder
+  Widget _buildEmojiPicker() {
+    return Container(
+      height: 320,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 15,
+            offset: const Offset(0, -5),
+          ),
+        ],
+      ),
+      child: EmojiPicker(
+        textEditingController: _messageController,
+        onEmojiSelected: (category, emoji) {
+          _messageController
+            ..text += emoji.emoji
+            ..selection = TextSelection.fromPosition(
+              TextPosition(offset: _messageController.text.length),
+            );
+        },
+        config: const Config(
+          height: 320,
+          checkPlatformCompatibility: true,
+          emojiViewConfig: EmojiViewConfig(
+            columns: 7,
+            emojiSizeMax: 32,
+            verticalSpacing: 0,
+            horizontalSpacing: 0,
+          ),
+          categoryViewConfig: CategoryViewConfig(
+            indicatorColor: ChatColors.primary,
+            iconColor: Colors.grey,
+            iconColorSelected: ChatColors.primary,
+          ),
+          bottomActionBarConfig: BottomActionBarConfig(
+            enabled: true,
+            backgroundColor: Colors.white,
+          ),
+          searchViewConfig: SearchViewConfig(
+            backgroundColor: Colors.white,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Enhanced AppBar with Gradient
   AppBar _buildNormalAppBar() {
     return AppBar(
       elevation: 0,
       backgroundColor: Colors.white,
-      foregroundColor: const Color(0xFF1A1D2B),
+      foregroundColor: ChatColors.textPrimary,
       leading: IconButton(
         icon: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: Colors.grey[100],
+            color: ChatColors.background,
             shape: BoxShape.circle,
           ),
-          child: const Icon(Icons.arrow_back, size: 20),
+          child: const Icon(Icons.arrow_back, size: 20, color: ChatColors.primary),
         ),
         onPressed: () => Navigator.pop(context),
       ),
@@ -875,24 +928,29 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
         children: [
           // Group avatar with gradient
           Container(
-            padding: const EdgeInsets.all(10),
+            width: 44,
+            height: 44,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFF7B61FF), Color(0xFF9D8CFF)],
+                colors: [ChatColors.primary, ChatColors.secondary],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(14),
             ),
-            child: Text(
-              widget.groupName.isNotEmpty ? widget.groupName[0].toUpperCase() : 'G',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-                fontSize: 16,
+            child: Center(
+              child: Text(
+                widget.groupName.isNotEmpty ? widget.groupName[0].toUpperCase() : 'G',
+                style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 18,
+                ),
               ),
             ),
           ),
           const SizedBox(width: 12),
-          // 🔥 FIXED: Use ValueListenableBuilder instead of StreamBuilder
+          // Group Info with ValueListenableBuilder
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -900,10 +958,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
               children: [
                 Text(
                   widget.groupName,
-                  style: const TextStyle(
+                  style: GoogleFonts.poppins(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF1A1D2B),
+                    color: ChatColors.textPrimary,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -915,29 +973,38 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
                     return Row(
                       children: [
                         Container(
-                          width: 6,
-                          height: 6,
+                          width: 8,
+                          height: 8,
                           decoration: BoxDecoration(
                             color: onlineCount > 0
-                                ? const Color(0xFF00D4AA)
+                                ? ChatColors.success
                                 : Colors.grey,
                             shape: BoxShape.circle,
+                            boxShadow: onlineCount > 0
+                                ? [
+                              BoxShadow(
+                                color: ChatColors.success.withOpacity(0.5),
+                                blurRadius: 4,
+                                spreadRadius: 1,
+                              )
+                            ]
+                                : [],
                           ),
                         ),
                         const SizedBox(width: 4),
                         Text(
                           '$onlineCount online',
-                          style: const TextStyle(
+                          style: GoogleFonts.poppins(
                             fontSize: 11,
-                            color: Color(0xFF6E7A8A),
+                            color: ChatColors.textSecondary,
                           ),
                         ),
                         const SizedBox(width: 4),
                         Text(
                           '•',
-                          style: TextStyle(
+                          style: GoogleFonts.poppins(
                             fontSize: 11,
-                            color: Colors.grey[400],
+                            color: ChatColors.textSecondary,
                           ),
                         ),
                         const SizedBox(width: 4),
@@ -945,10 +1012,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
                           valueListenable: _memberCountNotifier,
                           builder: (context, memberCount, child) {
                             return Text(
-                              '$memberCount',
-                              style: const TextStyle(
+                              '$memberCount members',
+                              style: GoogleFonts.poppins(
                                 fontSize: 11,
-                                color: Color(0xFF6E7A8A),
+                                color: ChatColors.textSecondary,
                               ),
                             );
                           },
@@ -969,10 +1036,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
             icon: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.grey[100],
+                color: ChatColors.background,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.info_outline, size: 20),
+              child: const Icon(Icons.info_outline, size: 20, color: ChatColors.primary),
             ),
             onPressed: () => _showGroupInfo(context),
           ),
@@ -985,24 +1052,24 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
     return AppBar(
       elevation: 0,
       backgroundColor: Colors.white,
-      foregroundColor: const Color(0xFF1A1D2B),
+      foregroundColor: ChatColors.textPrimary,
       leading: IconButton(
         icon: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: Colors.grey[100],
+            color: ChatColors.background,
             shape: BoxShape.circle,
           ),
-          child: const Icon(Icons.close, size: 20),
+          child: const Icon(Icons.close, size: 20, color: ChatColors.primary),
         ),
         onPressed: _exitSelectionMode,
       ),
       title: Text(
         '${_selectedMessageIds.length} selected',
-        style: const TextStyle(
+        style: GoogleFonts.poppins(
           fontSize: 18,
           fontWeight: FontWeight.w700,
-          color: Color(0xFF1A1D2B),
+          color: ChatColors.textPrimary,
         ),
       ),
       actions: [
@@ -1012,12 +1079,12 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
             icon: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: const Color(0xFFFF647C).withOpacity(0.1),
+                color: ChatColors.error.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
                 Icons.delete_outline,
-                color: Color(0xFFFF647C),
+                color: ChatColors.error,
                 size: 20,
               ),
             ),
@@ -1032,137 +1099,189 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(35)),
       ),
       builder: (context) => DraggableScrollableSheet(
         initialChildSize: 0.5,
         minChildSize: 0.3,
-        maxChildSize: 0.7,
+        maxChildSize: 0.8,
         expand: false,
-        builder: (context, scrollController) => Container(
-          padding: const EdgeInsets.all(24),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
+        builder: (context, scrollController) => SafeArea(
+          top: false,
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(35)),
+            ),
+            child: SingleChildScrollView(
+              controller: scrollController,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF7B61FF), Color(0xFF9D8CFF)],
+                  /// Drag Handle
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: ChatColors.border,
+                        borderRadius: BorderRadius.circular(2),
                       ),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Icon(
-                      Icons.group,
-                      color: Colors.white,
-                      size: 28,
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.groupName,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF1A1D2B),
+                  const SizedBox(height: 24),
+
+                  /// Group Header Row
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [
+                              ChatColors.primary,
+                              ChatColors.secondary
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: ChatColors.primary.withOpacity(0.3),
+                              blurRadius: 15,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 4),
-                        ValueListenableBuilder<int>(
-                          valueListenable: _memberCountNotifier,
-                          builder: (context, memberCount, child) {
-                            return ValueListenableBuilder<int>(
-                              valueListenable: _onlineCountNotifier,
-                              builder: (context, onlineCount, child) {
-                                return Text(
-                                  '$memberCount members • $onlineCount online',
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    color: Color(0xFF6E7A8A),
-                                  ),
+                        child: const Icon(
+                          Icons.group,
+                          color: Colors.white,
+                          size: 28,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+
+                      /// Group Info
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.groupName,
+                              style: GoogleFonts.poppins(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                color: ChatColors.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+
+                            ValueListenableBuilder<int>(
+                              valueListenable: _memberCountNotifier,
+                              builder: (context, memberCount, child) {
+                                return ValueListenableBuilder<int>(
+                                  valueListenable: _onlineCountNotifier,
+                                  builder: (context, onlineCount, child) {
+                                    return Text(
+                                      '$memberCount members • $onlineCount online',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 14,
+                                        color: ChatColors.textSecondary,
+                                      ),
+                                    );
+                                  },
                                 );
                               },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 32),
+
+                  /// Section Title
+                  Text(
+                    'Group Options',
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: ChatColors.textPrimary,
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  /// View Members
+                  _buildInfoTile(
+                    icon: Icons.people_outline,
+                    title: 'View All Members',
+                    subtitle: 'See who\'s in this group',
+                    color: ChatColors.primary,
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        PageRouteBuilder(
+                          pageBuilder: (context, animation, secondaryAnimation) =>
+                              GroupMembersScreen(
+                                groupId: widget.groupId,
+                                groupName: widget.groupName,
+                              ),
+                          transitionsBuilder:
+                              (context, animation, secondaryAnimation, child) {
+                            const begin = Offset(1.0, 0.0);
+                            const end = Offset.zero;
+                            const curve = Curves.easeInOut;
+                            var tween = Tween(begin: begin, end: end)
+                                .chain(CurveTween(curve: curve));
+                            return SlideTransition(
+                              position: animation.drive(tween),
+                              child: child,
                             );
                           },
                         ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
+
+                  const Divider(height: 24, color: ChatColors.border),
+
+                  /// Report Group
+                  _buildInfoTile(
+                    icon: Icons.report_outlined,
+                    title: 'Report Group',
+                    subtitle: 'Report inappropriate content',
+                    color: ChatColors.error,
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showReportDialog();
+                    },
+                  ),
+
+                  const Divider(height: 24, color: ChatColors.border),
+
+                  /// Leave Group
+                  _buildInfoTile(
+                    icon: Icons.exit_to_app,
+                    title: 'Leave Group',
+                    subtitle: 'Permanently leave this group',
+                    color: ChatColors.error,
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showLeaveGroupDialog();
+                    },
+                  ),
+
+                  const SizedBox(height: 30),
                 ],
               ),
-              const SizedBox(height: 32),
-              const Text(
-                'Group Options',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF1A1D2B),
-                ),
-              ),
-              const SizedBox(height: 16),
-              _buildInfoTile(
-                icon: Icons.people_outline,
-                title: 'View All Members',
-                subtitle: 'See who\'s in this group',
-                color: const Color(0xFF7B61FF),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => GroupMembersScreen(
-                        groupId: widget.groupId,
-                        groupName: widget.groupName,
-                      ),
-                    ),
-                  );
-                },
-              ),
-              const Divider(height: 24),
-              _buildInfoTile(
-                icon: Icons.report_outlined,
-                title: 'Report Group',
-                subtitle: 'Report inappropriate content',
-                color: const Color(0xFFFF647C),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showReportDialog();
-                },
-              ),
-              const Divider(height: 24),
-              _buildInfoTile(
-                icon: Icons.exit_to_app,
-                title: 'Leave Group',
-                subtitle: 'Permanently leave this group',
-                color: const Color(0xFFFF647C),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showLeaveGroupDialog();
-                },
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -1178,16 +1297,16 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(16),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(16),
               ),
               child: Icon(icon, color: color, size: 22),
             ),
@@ -1198,18 +1317,18 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: GoogleFonts.poppins(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF1A1D2B),
+                      color: ChatColors.textPrimary,
                     ),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: TextStyle(
+                    style: GoogleFonts.poppins(
                       fontSize: 13,
-                      color: Colors.grey[600],
+                      color: ChatColors.textSecondary,
                     ),
                   ),
                 ],
@@ -1217,7 +1336,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
             ),
             Icon(
               Icons.chevron_right,
-              color: Colors.grey[400],
+              color: ChatColors.textSecondary,
               size: 20,
             ),
           ],
@@ -1234,7 +1353,14 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
         child: Container(
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(28),
+            borderRadius: BorderRadius.circular(35),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 30,
+                offset: const Offset(0, 15),
+              ),
+            ],
           ),
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -1244,31 +1370,30 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFF647C).withOpacity(0.1),
+                    color: ChatColors.error.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
                     Icons.flag_outlined,
-                    color: Color(0xFFFF647C),
+                    color: ChatColors.error,
                     size: 32,
                   ),
                 ),
                 const SizedBox(height: 20),
-                const Text(
+                Text(
                   'Report Group',
-                  style: TextStyle(
+                  style: GoogleFonts.poppins(
                     fontSize: 22,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF1A1D2B),
+                    color: ChatColors.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'Are you sure you want to report this group? '
-                      'Our team will review it within 24 hours.',
+                Text(
+                  'Are you sure you want to report this group? Our team will review it within 24 hours.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Color(0xFF6E7A8A),
+                  style: GoogleFonts.poppins(
+                    color: ChatColors.textSecondary,
                     fontSize: 15,
                     height: 1.4,
                   ),
@@ -1282,14 +1407,15 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
                         style: TextButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
+                            borderRadius: BorderRadius.circular(16),
                           ),
                         ),
-                        child: const Text(
+                        child: Text(
                           'Cancel',
-                          style: TextStyle(
+                          style: GoogleFonts.poppins(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
+                            color: ChatColors.textSecondary,
                           ),
                         ),
                       ),
@@ -1299,20 +1425,20 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
                       child: ElevatedButton(
                         onPressed: () {
                           Navigator.pop(context);
-                          _showSuccessSnackbar('Group reported successfully');
+                          _showSnackbar('Group reported successfully');
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFFF647C),
+                          backgroundColor: ChatColors.error,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
+                            borderRadius: BorderRadius.circular(16),
                           ),
                           elevation: 0,
                         ),
-                        child: const Text(
+                        child: Text(
                           'Report',
-                          style: TextStyle(
+                          style: GoogleFonts.poppins(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                           ),
@@ -1337,7 +1463,14 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
         child: Container(
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(28),
+            borderRadius: BorderRadius.circular(35),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 30,
+                offset: const Offset(0, 15),
+              ),
+            ],
           ),
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -1347,31 +1480,30 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFF647C).withOpacity(0.1),
+                    color: ChatColors.error.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
                     Icons.exit_to_app,
-                    color: Color(0xFFFF647C),
+                    color: ChatColors.error,
                     size: 32,
                   ),
                 ),
                 const SizedBox(height: 20),
-                const Text(
+                Text(
                   'Leave Group',
-                  style: TextStyle(
+                  style: GoogleFonts.poppins(
                     fontSize: 22,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF1A1D2B),
+                    color: ChatColors.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'Are you sure you want to leave this group? '
-                      'You will no longer receive messages from this group.',
+                Text(
+                  'Are you sure you want to leave this group? You will no longer receive messages from this group.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Color(0xFF6E7A8A),
+                  style: GoogleFonts.poppins(
+                    color: ChatColors.textSecondary,
                     fontSize: 15,
                     height: 1.4,
                   ),
@@ -1385,14 +1517,15 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
                         style: TextButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
+                            borderRadius: BorderRadius.circular(16),
                           ),
                         ),
-                        child: const Text(
+                        child: Text(
                           'Cancel',
-                          style: TextStyle(
+                          style: GoogleFonts.poppins(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
+                            color: ChatColors.textSecondary,
                           ),
                         ),
                       ),
@@ -1413,26 +1546,26 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
                               if (context.mounted) {
                                 Navigator.pop(context);
                                 Navigator.pop(context);
-                                _showSuccessSnackbar('You left the group');
+                                _showSnackbar('You left the group');
                               }
                             } catch (e) {
                               Navigator.pop(context);
-                              _showErrorSnackbar('Error: $e');
+                              _showSnackbar('Error: $e', isError: true);
                             }
                           }
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFFF647C),
+                          backgroundColor: ChatColors.error,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
+                            borderRadius: BorderRadius.circular(16),
                           ),
                           elevation: 0,
                         ),
-                        child: const Text(
+                        child: Text(
                           'Leave',
-                          style: TextStyle(
+                          style: GoogleFonts.poppins(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                           ),
@@ -1450,6 +1583,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
   }
 }
 
+// ==================== CHAT MESSAGE MODEL ====================
 class ChatMessage {
   final String id;
   final String senderId;
@@ -1470,13 +1604,14 @@ class ChatMessage {
   });
 }
 
-class ChatBubble extends StatelessWidget {
+// ==================== ENHANCED CHAT BUBBLE ====================
+class EnhancedChatBubble extends StatelessWidget {
   final ChatMessage message;
   final bool isSelected;
   final bool showAvatar;
   final VoidCallback? onLongPress;
 
-  const ChatBubble({
+  const EnhancedChatBubble({
     super.key,
     required this.message,
     this.isSelected = false,
@@ -1490,43 +1625,40 @@ class ChatBubble extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
-        mainAxisAlignment: message.isMe
-            ? MainAxisAlignment.end
-            : MainAxisAlignment.start,
+        mainAxisAlignment: message.isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
           if (!message.isMe) ...[
             if (showAvatar)
-              Container(
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
                 margin: const EdgeInsets.only(right: 8),
-                child: Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: isSelected
-                        ? const LinearGradient(
-                      colors: [Color(0xFF7B61FF), Color(0xFF9D8CFF)],
-                    )
-                        : null,
-                  ),
-                  padding: EdgeInsets.all(isSelected ? 2 : 0),
-                  child: CircleAvatar(
-                    radius: 18,
-                    backgroundColor: Colors.grey[200],
-                    backgroundImage: message.senderImage != null
-                        ? CachedNetworkImageProvider(message.senderImage!)
-                        : null,
-                    child: message.senderImage == null
-                        ? Text(
-                      message.senderName.isNotEmpty
-                          ? message.senderName[0].toUpperCase()
-                          : '?',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                        color: Color(0xFF6E7A8A),
-                      ),
-                    )
-                        : null,
-                  ),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: isSelected
+                      ? const LinearGradient(
+                    colors: [ChatColors.primary, ChatColors.secondary],
+                  )
+                      : null,
+                ),
+                padding: EdgeInsets.all(isSelected ? 2 : 0),
+                child: CircleAvatar(
+                  radius: 18,
+                  backgroundColor: ChatColors.background,
+                  backgroundImage: message.senderImage != null
+                      ? CachedNetworkImageProvider(message.senderImage!)
+                      : null,
+                  child: message.senderImage == null
+                      ? Text(
+                    message.senderName.isNotEmpty
+                        ? message.senderName[0].toUpperCase()
+                        : '?',
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      color: ChatColors.primary,
+                    ),
+                  )
+                      : null,
                 ),
               )
             else
@@ -1550,10 +1682,10 @@ class ChatBubble extends StatelessWidget {
                         padding: const EdgeInsets.only(left: 12, bottom: 4),
                         child: Text(
                           message.senderName,
-                          style: const TextStyle(
+                          style: GoogleFonts.poppins(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF6E7A8A),
+                            color: ChatColors.textSecondary,
                           ),
                         ),
                       ),
@@ -1562,30 +1694,25 @@ class ChatBubble extends StatelessWidget {
                       decoration: BoxDecoration(
                         gradient: message.isMe
                             ? const LinearGradient(
-                          colors: [
-                            Color(0xFF7B61FF),
-                            Color(0xFF9D8CFF)
-                          ],
+                          colors: [ChatColors.primary, ChatColors.secondary],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         )
                             : null,
-                        color: message.isMe
-                            ? null
-                            : Colors.white,
+                        color: message.isMe ? null : Colors.white,
                         borderRadius: BorderRadius.only(
-                          topLeft: const Radius.circular(20),
-                          topRight: const Radius.circular(20),
+                          topLeft: const Radius.circular(22),
+                          topRight: const Radius.circular(22),
                           bottomLeft: message.isMe
-                              ? const Radius.circular(20)
-                              : const Radius.circular(4),
+                              ? const Radius.circular(22)
+                              : const Radius.circular(6),
                           bottomRight: message.isMe
-                              ? const Radius.circular(4)
-                              : const Radius.circular(20),
+                              ? const Radius.circular(6)
+                              : const Radius.circular(22),
                         ),
                         border: isSelected
                             ? Border.all(
-                          color: const Color(0xFF7B61FF),
+                          color: ChatColors.primary,
                           width: 2,
                         )
                             : null,
@@ -1593,16 +1720,20 @@ class ChatBubble extends StatelessWidget {
                           BoxShadow(
                             color: Colors.black.withOpacity(0.03),
                             blurRadius: 8,
-                            offset: const Offset(0, 2),
+                            offset: const Offset(0, 3),
                           ),
+                          if (message.isMe)
+                            BoxShadow(
+                              color: ChatColors.primary.withOpacity(0.2),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
                         ],
                       ),
                       child: Text(
                         message.text,
-                        style: TextStyle(
-                          color: message.isMe
-                              ? Colors.white
-                              : const Color(0xFF1A1D2B),
+                        style: GoogleFonts.poppins(
+                          color: message.isMe ? Colors.white : ChatColors.textPrimary,
                           fontSize: 15,
                           height: 1.4,
                         ),
@@ -1616,27 +1747,28 @@ class ChatBubble extends StatelessWidget {
                         children: [
                           Text(
                             DateFormat('h:mm a').format(message.timestamp),
-                            style: const TextStyle(
+                            style: GoogleFonts.poppins(
                               fontSize: 11,
-                              color: Color(0xFFA0A8B8),
+                              color: ChatColors.textSecondary,
                             ),
                           ),
                           if (message.isMe) ...[
                             const SizedBox(width: 4),
-                            Container(
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
                               padding: const EdgeInsets.all(2),
                               decoration: BoxDecoration(
                                 color: isSelected
-                                    ? const Color(0xFF7B61FF).withOpacity(0.1)
-                                    : const Color(0xFF00D4AA).withOpacity(0.1),
+                                    ? ChatColors.primary.withOpacity(0.1)
+                                    : ChatColors.success.withOpacity(0.1),
                                 shape: BoxShape.circle,
                               ),
                               child: Icon(
                                 Icons.done_all,
                                 size: 12,
                                 color: isSelected
-                                    ? const Color(0xFF7B61FF)
-                                    : const Color(0xFF00D4AA),
+                                    ? ChatColors.primary
+                                    : ChatColors.success,
                               ),
                             ),
                           ],

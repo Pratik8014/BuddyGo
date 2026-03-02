@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -135,6 +136,7 @@ class AuthController with ChangeNotifier {
     String? location,
     String? studentId,
     List<String>? interests,
+    String? phone,
   }) async {
     if (_currentUser == null) return;
 
@@ -147,11 +149,20 @@ class AuthController with ChangeNotifier {
         location: location,
         studentId: studentId,
         interests: interests,
+        phone: phone, // ✅ ADD THIS
       );
 
       await _firebaseService.updateUserProfile(
         _currentUser!.id,
-        updatedUser.toJson(),
+        {
+          if (name != null) 'name': name,
+          if (bio != null) 'bio': bio,
+          if (location != null) 'location': location,
+          if (studentId != null) 'studentId': studentId,
+          if (interests != null) 'interests': interests,
+          if (phone != null) 'phone': phone, // ✅ ADD THIS
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
       );
 
       _currentUser = updatedUser;

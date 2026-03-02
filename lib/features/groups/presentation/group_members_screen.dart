@@ -3,10 +3,31 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:badges/badges.dart' as badges;
 import 'package:buddygoapp/core/services/firebase_service.dart';
 import 'package:buddygoapp/features/auth/presentation/auth_controller.dart';
 import 'package:buddygoapp/features/groups/data/group_model.dart';
 import 'package:buddygoapp/features/user/presentation/user_profile_view_screen.dart';
+
+// ==================== CONSTANTS ====================
+class MemberColors {
+  static const Color primary = Color(0xFF8B5CF6);     // Purple
+  static const Color secondary = Color(0xFFFF6B6B);   // Coral
+  static const Color tertiary = Color(0xFF4FD1C5);    // Teal
+  static const Color accent = Color(0xFFFBBF24);      // Yellow
+  static const Color success = Color(0xFF06D6A0);     // Mint Green
+  static const Color error = Color(0xFFFF6B6B);       // Coral for errors
+  static const Color background = Color(0xFFF0F2FE);  // Light purple tint
+  static const Color surface = Colors.white;
+  static const Color textPrimary = Color(0xFF1A202C);
+  static const Color textSecondary = Color(0xFF718096);
+
+  // Role colors
+  static const Color adminColor = Color(0xFF8B5CF6);     // Purple
+  static const Color moderatorColor = Color(0xFFFBBF24); // Yellow
+  static const Color memberColor = Color(0xFF4FD1C5);    // Teal
+}
 
 class GroupMembersScreen extends StatefulWidget {
   final String groupId;
@@ -22,15 +43,10 @@ class GroupMembersScreen extends StatefulWidget {
   State<GroupMembersScreen> createState() => _GroupMembersScreenState();
 }
 
-class _GroupMembersScreenState extends State<GroupMembersScreen> with SingleTickerProviderStateMixin {
+class _GroupMembersScreenState extends State<GroupMembersScreen> {
   final FirebaseService _firebaseService = FirebaseService();
-  late TabController _tabController;
 
   List<Map<String, dynamic>> _members = [];
-  List<Map<String, dynamic>> _admins = [];
-  List<Map<String, dynamic>> _moderators = [];
-  List<Map<String, dynamic>> _onlineMembers = [];
-
   bool _isLoading = true;
   String? _currentUserId;
   bool _isCurrentUserAdmin = false;
@@ -39,14 +55,7 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> with SingleTick
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
     _loadMembers();
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
   }
 
   Future<void> _loadMembers() async {
@@ -56,17 +65,12 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> with SingleTick
       final authController = Provider.of<AuthController>(context, listen: false);
       _currentUserId = authController.currentUser?.id;
 
-      // Get group details
       final group = await _firebaseService.getGroupById(widget.groupId);
       if (group == null) return;
 
-      // Check if current user is admin
       _isCurrentUserAdmin = group.isAdmin(_currentUserId ?? '');
 
-      // Get all member IDs
       final memberIds = group.memberIds;
-
-      // Fetch user details for each member
       final List<Map<String, dynamic>> membersList = [];
 
       for (String userId in memberIds) {
@@ -74,7 +78,6 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> with SingleTick
         if (userDoc.exists) {
           final userData = userDoc.data() as Map<String, dynamic>;
 
-          // Get last active status (simplified - you can enhance this)
           final lastActive = userData['lastActive'] != null
               ? (userData['lastActive'] as Timestamp).toDate()
               : null;
@@ -82,38 +85,20 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> with SingleTick
           final isOnline = lastActive != null &&
               DateTime.now().difference(lastActive).inMinutes < 5;
 
-          final memberInfo = {
+          final role = _getUserRole(group, userId);
+          membersList.add({
             'id': userId,
             'name': userData['name'] ?? 'Unknown User',
-            'email': userData['email'] ?? '',
             'photoUrl': userData['photoUrl'],
-            'bio': userData['bio'],
             'isVerified': userData['isVerifiedTraveler'] == true,
             'isOnline': isOnline,
-            'lastActive': lastActive,
-            'role': _getUserRole(group, userId),
-            'joinedAt': userData['createdAt'] ?? Timestamp.now(),
+            'role': role,
             'totalTrips': userData['totalTrips'] ?? 0,
-            'rating': userData['rating'] ?? 5,
-          };
-
-          membersList.add(memberInfo);
-
-          // Categorize by role
-          if (group.isAdmin(userId)) {
-            _admins.add(memberInfo);
-          } else if (group.isModerator(userId)) {
-            _moderators.add(memberInfo);
-          }
-
-          // Track online members
-          if (isOnline) {
-            _onlineMembers.add(memberInfo);
-          }
+            'rating': userData['rating'] ?? 5.0,
+          });
         }
       }
 
-      // Sort members: online first, then alphabetically
       membersList.sort((a, b) {
         if (a['isOnline'] && !b['isOnline']) return -1;
         if (!a['isOnline'] && b['isOnline']) return 1;
@@ -139,11 +124,22 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> with SingleTick
   Color _getRoleColor(String role) {
     switch (role) {
       case 'Admin':
-        return const Color(0xFF7B61FF);
+        return MemberColors.adminColor;
       case 'Moderator':
-        return Colors.orange;
+        return MemberColors.moderatorColor;
       default:
-        return Colors.grey;
+        return MemberColors.memberColor;
+    }
+  }
+
+  IconData _getRoleIcon(String role) {
+    switch (role) {
+      case 'Admin':
+        return Icons.admin_panel_settings;
+      case 'Moderator':
+        return Icons.security;
+      default:
+        return Icons.person;
     }
   }
 
@@ -152,571 +148,742 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> with SingleTick
 
     return _members.where((member) {
       final name = member['name'].toString().toLowerCase();
-      final email = member['email'].toString().toLowerCase();
       final query = _searchQuery.toLowerCase();
-      return name.contains(query) || email.contains(query);
+      return name.contains(query);
     }).toList();
   }
 
-  List<Map<String, dynamic>> get _currentTabMembers {
-    switch (_tabController.index) {
-      case 0: // All Members
-        return _filteredMembers;
-      case 1: // Admins & Moderators
-        return _filteredMembers.where((m) =>
-        m['role'] == 'Admin' || m['role'] == 'Moderator'
-        ).toList();
-      case 2: // Online
-        return _filteredMembers.where((m) => m['isOnline']).toList();
-      default:
-        return _filteredMembers;
-    }
-  }
+  int get _onlineCount => _members.where((m) => m['isOnline']).length;
 
   @override
   Widget build(BuildContext context) {
-    final authController = Provider.of<AuthController>(context);
-    final currentUserId = authController.currentUser?.id;
-
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FC),
+      backgroundColor: MemberColors.background,
       appBar: AppBar(
-        elevation: 0,
         backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF1A1D2B),
-        leading: IconButton(
-          icon: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.grey[100],
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.arrow_back, size: 20),
+        elevation: 0,
+        leading: Container(
+          margin: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: MemberColors.primary.withOpacity(0.2),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-          onPressed: () => Navigator.pop(context),
+          child: IconButton(
+            icon: Icon(Icons.arrow_back, color: MemberColors.primary),
+            onPressed: () => Navigator.pop(context),
+          ),
         ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Group Members',
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF1A1D2B),
+              widget.groupName,
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: MemberColors.textPrimary,
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 2),
-            Text(
-              '${_members.length} members • ${_onlineMembers.length} online',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-              ),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [MemberColors.primary.withOpacity(0.1), MemberColors.primary.withOpacity(0.05)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: MemberColors.primary.withOpacity(0.2), width: 1),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.people, size: 12, color: MemberColors.primary),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${_members.length}',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: MemberColors.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [MemberColors.success.withOpacity(0.1), MemberColors.success.withOpacity(0.05)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: MemberColors.success.withOpacity(0.2), width: 1),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: MemberColors.success,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: MemberColors.success.withOpacity(0.5),
+                              blurRadius: 4,
+                              spreadRadius: 1,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$_onlineCount online',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: MemberColors.success,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(120),
-          child: Column(
-            children: [
-              // Search Bar
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                child: Container(
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: TextField(
-                    onChanged: (value) {
-                      setState(() {
-                        _searchQuery = value;
-                      });
-                    },
-                    decoration: InputDecoration(
-                      hintText: 'Search members...',
-                      hintStyle: TextStyle(color: Colors.grey[500]),
-                      prefixIcon: Icon(Icons.search, color: Colors.grey[500], size: 20),
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
+          preferredSize: const Size.fromHeight(70),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Container(
+              height: 46,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.white, Colors.grey[50]!],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
-              ),
-              // Tab Bar
-              TabBar(
-                controller: _tabController,
-                indicatorColor: const Color(0xFF7B61FF),
-                labelColor: const Color(0xFF7B61FF),
-                unselectedLabelColor: Colors.grey,
-                tabs: [
-                  Tab(text: 'All (${_members.length})'),
-                  Tab(text: 'Admins (${_admins.length + _moderators.length})'),
-                  Tab(text: 'Online (${_onlineMembers.length})'),
+                borderRadius: BorderRadius.circular(23),
+                boxShadow: [
+                  BoxShadow(
+                    color: MemberColors.primary.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
                 ],
               ),
-            ],
+              child: TextField(
+                onChanged: (value) => setState(() => _searchQuery = value),
+                style: GoogleFonts.poppins(fontSize: 14, color: MemberColors.textPrimary),
+                decoration: InputDecoration(
+                  hintText: 'Search members...',
+                  hintStyle: GoogleFonts.poppins(
+                    color: MemberColors.textSecondary,
+                    fontSize: 14,
+                  ),
+                  prefixIcon: Icon(
+                    Icons.search,
+                    color: MemberColors.primary,
+                    size: 20,
+                  ),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? Container(
+                    margin: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: MemberColors.primary.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      icon: Icon(Icons.close, color: MemberColors.primary, size: 16),
+                      onPressed: () => setState(() => _searchQuery = ''),
+                      padding: EdgeInsets.zero,
+                    ),
+                  )
+                      : null,
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
           ),
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _members.isEmpty
-          ? _buildEmptyState()
-          : TabBarView(
-        controller: _tabController,
-        children: [
-          _buildMembersList(),
-          _buildMembersList(),
-          _buildMembersList(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMembersList() {
-    final members = _currentTabMembers;
-
-    if (members.isEmpty) {
-      return Center(
+          ? Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              _tabController.index == 0
-                  ? Icons.people_outline
-                  : _tabController.index == 1
-                  ? Icons.admin_panel_settings
-                  : Icons.circle_outlined,
-              size: 64,
-              color: Colors.grey[400],
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [MemberColors.primary.withOpacity(0.1), MemberColors.secondary.withOpacity(0.1)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                shape: BoxShape.circle,
+              ),
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(MemberColors.primary),
+                strokeWidth: 3,
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             Text(
-              _tabController.index == 0
-                  ? 'No members found'
-                  : _tabController.index == 1
-                  ? 'No admins found'
-                  : 'No members online',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey[600],
+              'Loading members...',
+              style: GoogleFonts.poppins(
+                fontSize: 15,
+                color: MemberColors.textSecondary,
                 fontWeight: FontWeight.w500,
               ),
             ),
           ],
         ),
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: members.length,
-      itemBuilder: (context, index) {
-        final member = members[index];
-        final isCurrentUser = member['id'] == _currentUserId;
-        final role = member['role'];
-        final roleColor = _getRoleColor(role);
-
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.02),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
+      )
+          : _filteredMembers.isEmpty
+          ? Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(30),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [MemberColors.primary.withOpacity(0.1), MemberColors.secondary.withOpacity(0.1)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.people_outline,
+                size: 60,
+                color: MemberColors.primary.withOpacity(0.5),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              _searchQuery.isEmpty ? 'No members found' : 'No matching members',
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: MemberColors.textPrimary,
+              ),
+            ),
+            if (_searchQuery.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => setState(() => _searchQuery = ''),
+                style: TextButton.styleFrom(
+                  foregroundColor: MemberColors.primary,
+                  backgroundColor: MemberColors.primary.withOpacity(0.1),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                ),
+                child: Text(
+                  'Clear Search',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ],
-          ),
-          child: ListTile(
-            contentPadding: const EdgeInsets.all(12),
-            leading: Stack(
-              children: [
-                CircleAvatar(
-                  radius: 28,
-                  backgroundColor: Colors.grey[200],
-                  backgroundImage: member['photoUrl'] != null
-                      ? CachedNetworkImageProvider(member['photoUrl'])
-                      : null,
-                  child: member['photoUrl'] == null
-                      ? Text(
-                    member['name'][0].toUpperCase(),
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF7B61FF),
-                    ),
-                  )
-                      : null,
+          ],
+        ),
+      )
+          : ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: _filteredMembers.length,
+        itemBuilder: (context, index) {
+          final member = _filteredMembers[index];
+          final isCurrentUser = member['id'] == _currentUserId;
+          final role = member['role'];
+          final roleColor = _getRoleColor(role);
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.white,
+                  member['isOnline']
+                      ? MemberColors.success.withOpacity(0.02)
+                      : Colors.white,
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.02),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
                 ),
-                if (member['isVerified'])
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.verified,
-                        size: 14,
-                        color: Color(0xFF00D4AA),
-                      ),
-                    ),
-                  ),
                 if (member['isOnline'])
-                  Positioned(
-                    top: 0,
-                    right: 0,
-                    child: Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: Colors.green,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                      ),
-                    ),
+                  BoxShadow(
+                    color: MemberColors.success.withOpacity(0.1),
+                    blurRadius: 15,
+                    spreadRadius: 2,
                   ),
               ],
             ),
-            title: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    member['name'],
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF1A1D2B),
-                    ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  if (!isCurrentUser) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => UserProfileViewScreen(userId: member['id']),
+                      ),
+                    );
+                  }
+                },
+                borderRadius: BorderRadius.circular(20),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      // Avatar with enhanced neon styling
+                      Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          // Gradient border for online users
+                          Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              gradient: member['isOnline']
+                                  ? const LinearGradient(
+                                colors: [MemberColors.success, MemberColors.tertiary],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              )
+                                  : null,
+                              shape: BoxShape.circle,
+                            ),
+                            child: CircleAvatar(
+                              radius: 28,
+                              backgroundColor: MemberColors.background,
+                              backgroundImage: member['photoUrl'] != null
+                                  ? CachedNetworkImageProvider(member['photoUrl'])
+                                  : null,
+                              child: member['photoUrl'] == null
+                                  ? Text(
+                                member['name'][0].toUpperCase(),
+                                style: GoogleFonts.poppins(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w700,
+                                  color: MemberColors.primary,
+                                ),
+                              )
+                                  : null,
+                            ),
+                          ),
+                          // Verified badge
+                          if (member['isVerified'])
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: Container(
+                                padding: const EdgeInsets.all(3),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: MemberColors.success.withOpacity(0.3),
+                                      blurRadius: 4,
+                                      spreadRadius: 1,
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.verified,
+                                  size: 14,
+                                  color: MemberColors.success,
+                                ),
+                              ),
+                            ),
+                          // Online indicator with glow
+                          if (member['isOnline'])
+                            Positioned(
+                              top: 2,
+                              right: 2,
+                              child: Container(
+                                width: 14,
+                                height: 14,
+                                decoration: BoxDecoration(
+                                  color: MemberColors.success,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white, width: 2),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: MemberColors.success.withOpacity(0.5),
+                                      blurRadius: 8,
+                                      spreadRadius: 2,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+
+                      const SizedBox(width: 16),
+
+                      // Member details
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Name and role row
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    member['name'],
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                      color: MemberColors.textPrimary,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+
+                                // Role badge with gradient
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        roleColor.withOpacity(0.1),
+                                        roleColor.withOpacity(0.05),
+                                      ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                    borderRadius: BorderRadius.circular(30),
+                                    border: Border.all(
+                                      color: roleColor.withOpacity(0.3),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        _getRoleIcon(role),
+                                        size: 12,
+                                        color: roleColor,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        role,
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                          color: roleColor,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
+                                // "You" badge for current user
+                                if (isCurrentUser) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [Colors.grey[300]!, Colors.grey[200]!],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                      borderRadius: BorderRadius.circular(30),
+                                    ),
+                                    child: Text(
+                                      'You',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.grey[700],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+
+                            const SizedBox(height: 8),
+
+                            // Stats row
+                            Row(
+                              children: [
+                                // Trip count
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: MemberColors.primary.withOpacity(0.05),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.travel_explore,
+                                        size: 12,
+                                        color: MemberColors.primary,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        '${member['totalTrips']} trips',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 11,
+                                          color: MemberColors.primary,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
+                                const SizedBox(width: 8),
+
+                                // Rating
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: MemberColors.accent.withOpacity(0.05),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.star,
+                                        size: 12,
+                                        color: MemberColors.accent,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        '${member['rating']}',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 11,
+                                          color: MemberColors.accent,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // Action menu for non-current users
+                      if (!isCurrentUser)
+                        Container(
+                          margin: const EdgeInsets.only(left: 8),
+                          decoration: BoxDecoration(
+                            color: MemberColors.primary.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: PopupMenuButton<String>(
+                            icon: Icon(
+                              Icons.more_vert,
+                              color: MemberColors.primary,
+                              size: 20,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            color: Colors.white,
+                            elevation: 8,
+                            shadowColor: MemberColors.primary.withOpacity(0.2),
+                            onSelected: (value) => _handleAction(value, member),
+                            itemBuilder: (context) => [
+                              PopupMenuItem(
+                                value: 'view_profile',
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: BoxDecoration(
+                                        color: MemberColors.primary.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Icon(
+                                        Icons.person,
+                                        size: 16,
+                                        color: MemberColors.primary,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text(
+                                      'View Profile',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (_isCurrentUserAdmin && member['role'] != 'Admin') ...[
+                                PopupMenuItem(
+                                  value: 'make_admin',
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: BoxDecoration(
+                                          color: MemberColors.accent.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Icon(
+                                          Icons.admin_panel_settings,
+                                          size: 16,
+                                          color: MemberColors.accent,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        'Make Admin',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                PopupMenuItem(
+                                  value: 'remove',
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: BoxDecoration(
+                                          color: MemberColors.error.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Icon(
+                                          Icons.remove_circle,
+                                          size: 16,
+                                          color: MemberColors.error,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        'Remove from Group',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-                if (role != 'Member')
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: roleColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      role,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: roleColor,
-                      ),
-                    ),
-                  ),
-                if (isCurrentUser)
-                  Container(
-                    margin: const EdgeInsets.only(left: 8),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Text(
-                      'You',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey,
-                      ),
-                    ),
-                  ),
-              ],
+              ),
             ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.travel_explore,
-                      size: 12,
-                      color: Colors.grey[400],
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${member['totalTrips']} trips',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Icon(
-                      Icons.star,
-                      size: 12,
-                      color: Colors.amber[300],
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${member['rating']}/5',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-                if (member['bio'] != null && member['bio'].toString().isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      member['bio'],
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[500],
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-              ],
-            ),
-            trailing: _buildActionButton(member, isCurrentUser),
-            onTap: () {
-              if (!isCurrentUser) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => UserProfileViewScreen(
-                      userId: member['id'],
-                    ),
-                  ),
-                );
-              }
-            },
+          );
+        },
+      ),
+    );
+  }
+
+  void _handleAction(String value, Map<String, dynamic> member) {
+    switch (value) {
+      case 'view_profile':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => UserProfileViewScreen(userId: member['id']),
           ),
         );
-      },
-    );
+        break;
+      case 'make_admin':
+        _showSnackbar('Making ${member['name']} admin...', isSuccess: true);
+        break;
+      case 'remove':
+        _showSnackbar('Removing ${member['name']} from group...', isError: true);
+        break;
+    }
   }
 
-  Widget _buildActionButton(Map<String, dynamic> member, bool isCurrentUser) {
-    if (isCurrentUser) return const SizedBox();
+  void _showSnackbar(String message, {bool isSuccess = false, bool isError = false}) {
+    Color getColor() {
+      if (isError) return MemberColors.error;
+      if (isSuccess) return MemberColors.success;
+      return MemberColors.primary;
+    }
 
-    return PopupMenuButton<String>(
-      icon: Icon(Icons.more_vert, color: Colors.grey[600], size: 20),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      onSelected: (value) {
-        switch (value) {
-          case 'message':
-            _startDirectMessage(member['id'], member['name']);
-            break;
-          case 'view_profile':
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => UserProfileViewScreen(
-                  userId: member['id'],
-                ),
-              ),
-            );
-            break;
-          case 'make_admin':
-            if (_isCurrentUserAdmin) {
-              _showMakeAdminDialog(member['id'], member['name']);
-            }
-            break;
-          case 'remove':
-            if (_isCurrentUserAdmin) {
-              _showRemoveMemberDialog(member['id'], member['name']);
-            }
-            break;
-        }
-      },
-      itemBuilder: (context) => [
-        const PopupMenuItem(
-          value: 'message',
-          child: Row(
-            children: [
-              Icon(Icons.message, size: 18, color: Color(0xFF7B61FF)),
-              SizedBox(width: 8),
-              Text('Send Message'),
-            ],
-          ),
-        ),
-        const PopupMenuItem(
-          value: 'view_profile',
-          child: Row(
-            children: [
-              Icon(Icons.person, size: 18, color: Colors.blue),
-              SizedBox(width: 8),
-              Text('View Profile'),
-            ],
-          ),
-        ),
-        if (_isCurrentUserAdmin && member['role'] != 'Admin') ...[
-          const PopupMenuDivider(),
-          const PopupMenuItem(
-            value: 'make_admin',
-            child: Row(
-              children: [
-                Icon(Icons.admin_panel_settings, size: 18, color: Color(0xFF7B61FF)),
-                SizedBox(width: 8),
-                Text('Make Admin'),
-              ],
-            ),
-          ),
-        ],
-        if (_isCurrentUserAdmin && member['role'] != 'Admin') ...[
-          const PopupMenuItem(
-            value: 'remove',
-            child: Row(
-              children: [
-                Icon(Icons.remove_circle, size: 18, color: Colors.red),
-                SizedBox(width: 8),
-                Text('Remove from Group'),
-              ],
-            ),
-          ),
-        ],
-      ],
-    );
-  }
+    IconData getIcon() {
+      if (isError) return Icons.error_outline;
+      if (isSuccess) return Icons.check_circle;
+      return Icons.info_outline;
+    }
 
-  Future<void> _startDirectMessage(String userId, String userName) async {
-    // TODO: Implement direct message functionality
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Starting chat with $userName...'),
-        backgroundColor: const Color(0xFF7B61FF),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  Future<void> _showMakeAdminDialog(String userId, String userName) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Make Admin'),
-        content: Text('Are you sure you want to make $userName an admin?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFF7B61FF),
+        content: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(getIcon(), color: Colors.white, size: 16),
             ),
-            child: const Text('Confirm'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      // TODO: Implement make admin functionality
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$userName is now an admin'),
-          backgroundColor: const Color(0xFF00D4AA),
-          behavior: SnackBarBehavior.floating,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                message,
+                style: GoogleFonts.poppins(fontSize: 14, color: Colors.white),
+              ),
+            ),
+          ],
         ),
-      );
-    }
-  }
-
-  Future<void> _showRemoveMemberDialog(String userId, String userName) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Remove Member'),
-        content: Text('Are you sure you want to remove $userName from the group?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.red,
-            ),
-            child: const Text('Remove'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      try {
-        await _firebaseService.leaveGroup(widget.groupId, userId);
-        _loadMembers(); // Reload members list
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$userName removed from group'),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error removing member: $e'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    }
-  }
-
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: const Color(0xFF7B61FF).withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.people_outline,
-              size: 64,
-              color: Color(0xFF7B61FF),
-            ),
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'No Members Found',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF1A1D2B),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'This group has no members yet',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[600],
-            ),
-          ),
-        ],
+        backgroundColor: getColor(),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 3),
       ),
     );
   }
