@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:badges/badges.dart' as badges;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:buddygoapp/core/services/firebase_service.dart';
 import 'package:buddygoapp/features/auth/presentation/auth_controller.dart';
 import 'package:buddygoapp/features/discovery/data/trip_model.dart';
@@ -60,6 +61,76 @@ class _MyTripsScreenState extends State<MyTripsScreen> with TickerProviderStateM
     _tabController.dispose();
     _fabAnimationController.dispose();
     super.dispose();
+  }
+
+  // 🔥 NEW: Delete trip function
+  Future<void> _deleteTrip(BuildContext context, Trip trip) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Trip'),
+        content: Text(
+          'Are you sure you want to delete "${trip.title}"? This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: TripColors.error,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      // Show loading indicator
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Deleting trip...'),
+          backgroundColor: TripColors.primary,
+        ),
+      );
+
+      // 1. Find the associated group
+      final groupId = await _firebaseService.getGroupIdByTripId(trip.id);
+
+      // 2. Delete the group if it exists
+      if (groupId != null) {
+        await _firebaseService.groupsCollection.doc(groupId).delete();
+      }
+
+      // 3. Delete the trip
+      await _firebaseService.tripsCollection.doc(trip.id).delete();
+
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Trip "${trip.title}" deleted successfully'),
+          backgroundColor: TripColors.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      // Refresh the list by triggering a rebuild
+      setState(() {});
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error deleting trip: $e'),
+          backgroundColor: TripColors.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   @override
@@ -148,7 +219,7 @@ class _MyTripsScreenState extends State<MyTripsScreen> with TickerProviderStateM
         children: [
           _buildUpcomingTrips(user?.id),
           _buildPastTrips(user?.id),
-          _buildCreatedTrips(user?.id),
+          _buildCreatedTrips(user?.id), // This tab will show delete buttons
         ],
       ),
       floatingActionButton: ScaleTransition(
@@ -187,7 +258,7 @@ class _MyTripsScreenState extends State<MyTripsScreen> with TickerProviderStateM
                 ),
               );
             },
-            backgroundColor: Colors.transparent, // IMPORTANT
+            backgroundColor: Colors.transparent,
             elevation: 0,
             extendedPadding: const EdgeInsets.symmetric(horizontal: 20),
             icon: const Icon(Icons.add, color: Colors.white),
@@ -225,7 +296,7 @@ class _MyTripsScreenState extends State<MyTripsScreen> with TickerProviderStateM
             .where((trip) => trip.startDate.isAfter(DateTime.now()))
             .toList();
 
-        return _buildTripList(upcomingTrips, type: 'upcoming');
+        return _buildTripList(upcomingTrips, type: 'upcoming', showDelete: false);
       },
     );
   }
@@ -247,7 +318,7 @@ class _MyTripsScreenState extends State<MyTripsScreen> with TickerProviderStateM
             .where((trip) => trip.endDate.isBefore(DateTime.now()))
             .toList();
 
-        return _buildTripList(pastTrips, type: 'past');
+        return _buildTripList(pastTrips, type: 'past', showDelete: false);
       },
     );
   }
@@ -265,7 +336,8 @@ class _MyTripsScreenState extends State<MyTripsScreen> with TickerProviderStateM
         }
 
         final trips = snapshot.data ?? [];
-        return _buildTripList(trips, type: 'created');
+        // 🔥 Show delete button only for created trips
+        return _buildTripList(trips, type: 'created', showDelete: true);
       },
     );
   }
@@ -366,7 +438,7 @@ class _MyTripsScreenState extends State<MyTripsScreen> with TickerProviderStateM
     );
   }
 
-  Widget _buildTripList(List<Trip> trips, {required String type}) {
+  Widget _buildTripList(List<Trip> trips, {required String type, required bool showDelete}) {
     if (trips.isEmpty) {
       return Center(
         child: Column(
@@ -464,6 +536,8 @@ class _MyTripsScreenState extends State<MyTripsScreen> with TickerProviderStateM
         return EnhancedTripCard(
           trip: trips[index],
           type: type,
+          showDelete: showDelete,
+          onDelete: () => _deleteTrip(context, trips[index]),
           onChat: () async {
             final groupId = await _firebaseService.getGroupIdByTripId(trips[index].id);
 
@@ -515,16 +589,20 @@ class _MyTripsScreenState extends State<MyTripsScreen> with TickerProviderStateM
   }
 }
 
-// ==================== ENHANCED TRIP CARD ====================
+// ==================== ENHANCED TRIP CARD WITH DELETE BUTTON ====================
 class EnhancedTripCard extends StatelessWidget {
   final Trip trip;
   final String type;
+  final bool showDelete;
   final VoidCallback onChat;
+  final VoidCallback onDelete;
 
   const EnhancedTripCard({
     super.key,
     required this.trip,
     required this.type,
+    required this.showDelete,
+    required this.onDelete,
     required this.onChat,
   });
 
@@ -598,7 +676,7 @@ class EnhancedTripCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header with status and chat
+                // Header with status and action buttons
                 Row(
                   children: [
                     // Status badge with gradient
@@ -685,6 +763,27 @@ class EnhancedTripCard extends StatelessWidget {
                     ),
 
                     const SizedBox(width: 8),
+
+                    // 🔥 DELETE BUTTON (only for created trips)
+                    if (showDelete)
+                      Container(
+                        decoration: BoxDecoration(
+                          color: TripColors.error.withOpacity(0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: IconButton(
+                          icon: Icon(
+                            Icons.delete_outline,
+                            color: TripColors.error,
+                            size: 20,
+                          ),
+                          onPressed: onDelete,
+                          padding: const EdgeInsets.all(8),
+                          constraints: const BoxConstraints(),
+                        ),
+                      ),
+
+                    const SizedBox(width: 4),
 
                     // Chat button
                     Container(
