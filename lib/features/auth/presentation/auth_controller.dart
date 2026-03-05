@@ -14,10 +14,12 @@ class AuthController with ChangeNotifier {
   UserModel? _currentUser;
   bool _isLoading = false;
   bool _isLoggedIn = false;
+  String? _resetPasswordMessage; // For tracking password reset status
 
   UserModel? get currentUser => _currentUser;
   bool get isLoading => _isLoading;
   bool get isLoggedIn => _isLoggedIn;
+  String? get resetPasswordMessage => _resetPasswordMessage;
 
   AuthController() {
     _initialize();
@@ -57,6 +59,41 @@ class AuthController with ChangeNotifier {
 
     await _firebaseService.createUserProfile(userModel);
     _currentUser = userModel;
+  }
+
+  // 🔥 NEW: Forgot Password - Send reset email
+  Future<bool> sendPasswordResetEmail(String email) async {
+    try {
+      _setLoading(true);
+      _resetPasswordMessage = null;
+
+      await _auth.sendPasswordResetEmail(email: email);
+
+      _resetPasswordMessage = 'Password reset email sent successfully. Please check your inbox.';
+      _setLoading(false);
+      return true;
+    } on FirebaseAuthException catch (e) {
+      _setLoading(false);
+
+      if (e.code == 'user-not-found') {
+        _resetPasswordMessage = 'No user found with this email address.';
+      } else if (e.code == 'invalid-email') {
+        _resetPasswordMessage = 'Please enter a valid email address.';
+      } else {
+        _resetPasswordMessage = 'Error: ${e.message}';
+      }
+      return false;
+    } catch (e) {
+      _setLoading(false);
+      _resetPasswordMessage = 'An unexpected error occurred. Please try again.';
+      return false;
+    }
+  }
+
+  // 🔥 NEW: Clear reset password message
+  void clearResetPasswordMessage() {
+    _resetPasswordMessage = null;
+    notifyListeners();
   }
 
   Future<bool> signInWithEmail(String email, String password) async {
@@ -149,7 +186,7 @@ class AuthController with ChangeNotifier {
         location: location,
         studentId: studentId,
         interests: interests,
-        phone: phone, // ✅ ADD THIS
+        phone: phone,
       );
 
       await _firebaseService.updateUserProfile(
@@ -160,7 +197,7 @@ class AuthController with ChangeNotifier {
           if (location != null) 'location': location,
           if (studentId != null) 'studentId': studentId,
           if (interests != null) 'interests': interests,
-          if (phone != null) 'phone': phone, // ✅ ADD THIS
+          if (phone != null) 'phone': phone,
           'updatedAt': FieldValue.serverTimestamp(),
         },
       );

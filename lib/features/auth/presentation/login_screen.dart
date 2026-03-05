@@ -4,6 +4,7 @@ import 'package:buddygoapp/features/auth/presentation/register_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:buddygoapp/core/widgets/custom_button.dart';
 import 'package:buddygoapp/core/widgets/custom_textfield.dart';
 import 'package:buddygoapp/features/auth/presentation/auth_controller.dart';
@@ -37,6 +38,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   final _passwordController = TextEditingController();
   bool _showPassword = false;
   final _formKey = GlobalKey<FormState>();
+  bool _isLoading = false;
 
   late AnimationController _pulseAnimationController;
   late Animation<double> _pulseAnimation;
@@ -63,6 +65,370 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     super.dispose();
   }
 
+  // 🔥 FIXED: Forgot Password Dialog
+  void _showForgotPasswordDialog() {
+    final emailController = TextEditingController();
+    final authController = Provider.of<AuthController>(context, listen: false);
+    bool isSending = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(30),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 30,
+                    offset: const Offset(0, 15),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Header Icon
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [LoginColors.primary, LoginColors.secondary],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: LoginColors.primary.withOpacity(0.3),
+                            blurRadius: 15,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.lock_reset,
+                        color: Colors.white,
+                        size: 32,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Title
+                    Text(
+                      'Reset Password',
+                      style: GoogleFonts.poppins(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: LoginColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Subtitle
+                    Text(
+                      'Enter your email address and we\'ll send you a link to reset your password.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        color: LoginColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Email Field
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: LoginColors.primary.withOpacity(0.1),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: TextFormField(
+                        controller: emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        style: GoogleFonts.poppins(fontSize: 14),
+                        decoration: InputDecoration(
+                          hintText: 'Enter your email',
+                          hintStyle: GoogleFonts.poppins(
+                            fontSize: 14,
+                            color: LoginColors.textSecondary,
+                          ),
+                          prefixIcon: Icon(
+                            Icons.email_outlined,
+                            color: LoginColors.primary,
+                          ),
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide(color: LoginColors.border),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: const BorderSide(color: LoginColors.primary, width: 2),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Action Buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: isSending ? null : () => Navigator.pop(dialogContext),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                            child: Text(
+                              'Cancel',
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: LoginColors.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [LoginColors.primary, LoginColors.secondary],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: LoginColors.primary.withOpacity(0.3),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: isSending
+                                    ? null
+                                    : () async {
+                                  final email = emailController.text.trim();
+                                  if (email.isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Please enter your email'),
+                                        backgroundColor: Color(0xFFFF647C),
+                                      ),
+                                    );
+                                    return;
+                                  }
+
+                                  setDialogState(() => isSending = true);
+
+                                  final success = await authController.sendPasswordResetEmail(email);
+
+                                  setDialogState(() => isSending = false);
+
+                                  if (success) {
+                                    // 🔥 FIXED: Close the current dialog first
+                                    Navigator.pop(dialogContext);
+
+                                    // 🔥 FIXED: Use a microtask to ensure dialog is closed
+                                    Future.microtask(() {
+                                      if (mounted) {
+                                        _showSuccessDialog(email);
+                                      }
+                                    });
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(authController.resetPasswordMessage ?? 'Failed to send reset email'),
+                                        backgroundColor: const Color(0xFFFF647C),
+                                      ),
+                                    );
+                                  }
+                                },
+                                borderRadius: BorderRadius.circular(16),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  child: Center(
+                                    child: isSending
+                                        ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                        : Text(
+                                      'Send Link',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+// 🔥 FIXED: Success Dialog
+  void _showSuccessDialog(String email) {
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(30),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 30,
+                offset: const Offset(0, 15),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Success Icon
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [LoginColors.success, LoginColors.tertiary],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: LoginColors.success.withOpacity(0.3),
+                        blurRadius: 15,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.mark_email_read,
+                    color: Colors.white,
+                    size: 32,
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Title
+                Text(
+                  'Check Your Email',
+                  style: GoogleFonts.poppins(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: LoginColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Message
+                Text(
+                  'We\'ve sent a password reset link to:\n$email',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: LoginColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // OK Button
+                Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [LoginColors.primary, LoginColors.secondary],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: LoginColors.primary.withOpacity(0.3),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => Navigator.pop(context),
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        child: Center(
+                          child: Text(
+                            'OK',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
   @override
   Widget build(BuildContext context) {
     final authController = Provider.of<AuthController>(context);
@@ -264,11 +630,11 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
                 const SizedBox(height: 8),
 
-                // Forgot Password Link
+                // 🔥 UPDATED: Forgot Password Link with Functionality
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: () {},
+                    onPressed: _showForgotPasswordDialog,
                     style: TextButton.styleFrom(
                       foregroundColor: LoginColors.primary,
                     ),
@@ -309,10 +675,14 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                     child: InkWell(
                       onTap: () async {
                         if (_formKey.currentState!.validate()) {
+                          setState(() => _isLoading = true);
+
                           final success = await authController.signInWithEmail(
                             _emailController.text.trim(),
                             _passwordController.text,
                           );
+
+                          setState(() => _isLoading = false);
 
                           if (success && context.mounted) {
                             Navigator.pushReplacement(
@@ -321,12 +691,19 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                 builder: (context) => const HomeScreen(),
                               ),
                             );
+                          } else if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Invalid email or password'),
+                                backgroundColor: Color(0xFFFF647C),
+                              ),
+                            );
                           }
                         }
                       },
                       borderRadius: BorderRadius.circular(20),
                       child: Center(
-                        child: authController.isLoading
+                        child: _isLoading || authController.isLoading
                             ? const SizedBox(
                           width: 24,
                           height: 24,
@@ -412,7 +789,10 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                     color: Colors.transparent,
                     child: InkWell(
                       onTap: () async {
+                        setState(() => _isLoading = true);
                         final success = await authController.signInWithGoogle();
+                        setState(() => _isLoading = false);
+
                         if (success && context.mounted) {
                           Navigator.pushReplacement(
                             context,
