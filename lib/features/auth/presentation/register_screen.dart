@@ -9,14 +9,14 @@ import '/../features/auth/presentation/auth_controller.dart';
 
 // ==================== CONSTANTS ====================
 class RegisterColors {
-  static const Color primary = Color(0xFF8B5CF6);     // Purple
-  static const Color secondary = Color(0xFFFF6B6B);   // Coral
-  static const Color tertiary = Color(0xFF4FD1C5);    // Teal
-  static const Color accent = Color(0xFFFBBF24);      // Yellow
-  static const Color lavender = Color(0xFF9F7AEA);    // Lavender
-  static const Color success = Color(0xFF06D6A0);     // Mint Green
-  static const Color error = Color(0xFFFF6B6B);       // Coral for errors
-  static const Color background = Color(0xFFF0F2FE);  // Light purple tint
+  static const Color primary = Color(0xFF8B5CF6); // Purple
+  static const Color secondary = Color(0xFFFF6B6B); // Coral
+  static const Color tertiary = Color(0xFF4FD1C5); // Teal
+  static const Color accent = Color(0xFFFBBF24); // Yellow
+  static const Color lavender = Color(0xFF9F7AEA); // Lavender
+  static const Color success = Color(0xFF06D6A0); // Mint Green
+  static const Color error = Color(0xFFFF6B6B); // Coral for errors
+  static const Color background = Color(0xFFF0F2FE); // Light purple tint
   static const Color warning = Color(0xFFFBBF24); // Yellow for warnings
   static const Color surface = Colors.white;
   static const Color textPrimary = Color(0xFF1A202C);
@@ -31,7 +31,8 @@ class RegisterScreen extends StatefulWidget {
   State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStateMixin {
+class _RegisterScreenState extends State<RegisterScreen>
+    with TickerProviderStateMixin {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -39,7 +40,12 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
 
   // Gender selection
   String? _selectedGender;
-  final List<String> _genders = ['Male', 'Female', 'Other', 'Prefer not to say'];
+  final List<String> _genders = [
+    'Male',
+    'Female',
+    'Other',
+    'Prefer not to say',
+  ];
 
   // Date of Birth
   DateTime? _selectedDate;
@@ -74,7 +80,9 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
   Future<void> _selectDate() async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: _selectedDate ?? DateTime.now().subtract(const Duration(days: 365 * 18)),
+      initialDate:
+          _selectedDate ??
+          DateTime.now().subtract(const Duration(days: 365 * 18)),
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
       builder: (context, child) {
@@ -169,7 +177,9 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: RegisterColors.primary.withOpacity(0.3 * _pulseAnimationController.value),
+                            color: RegisterColors.primary.withOpacity(
+                              0.3 * _pulseAnimationController.value,
+                            ),
                             blurRadius: 30,
                             spreadRadius: 5 * _pulseAnimationController.value,
                           ),
@@ -202,7 +212,10 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
                     controller: _nameController,
                     label: 'Full Name',
                     hintText: 'Enter your full name',
-                    prefixIcon: Icon(Icons.person_outline, color: RegisterColors.primary),
+                    prefixIcon: Icon(
+                      Icons.person_outline,
+                      color: RegisterColors.primary,
+                    ),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
                         return 'Please enter your name';
@@ -230,7 +243,10 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
                     controller: _emailController,
                     label: 'Email Address',
                     hintText: 'hello@example.com',
-                    prefixIcon: Icon(Icons.email_outlined, color: RegisterColors.secondary),
+                    prefixIcon: Icon(
+                      Icons.email_outlined,
+                      color: RegisterColors.secondary,
+                    ),
                     keyboardType: TextInputType.emailAddress,
                     validator: (value) {
                       if (value == null || value.isEmpty) {
@@ -309,10 +325,13 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
                                 decoration: BoxDecoration(
                                   gradient: isSelected
                                       ? LinearGradient(
-                                    colors: [RegisterColors.tertiary, RegisterColors.success],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  )
+                                          colors: [
+                                            RegisterColors.tertiary,
+                                            RegisterColors.success,
+                                          ],
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                        )
                                       : null,
                                   color: isSelected ? null : Colors.grey[50],
                                   borderRadius: BorderRadius.circular(30),
@@ -324,20 +343,25 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
                                   ),
                                   boxShadow: isSelected
                                       ? [
-                                    BoxShadow(
-                                      color: RegisterColors.tertiary.withOpacity(0.3),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ]
+                                          BoxShadow(
+                                            color: RegisterColors.tertiary
+                                                .withOpacity(0.3),
+                                            blurRadius: 10,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ]
                                       : null,
                                 ),
                                 child: Text(
                                   gender,
                                   style: GoogleFonts.poppins(
                                     fontSize: 14,
-                                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                                    color: isSelected ? Colors.white : RegisterColors.textSecondary,
+                                    fontWeight: isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.w500,
+                                    color: isSelected
+                                        ? Colors.white
+                                        : RegisterColors.textSecondary,
                                   ),
                                 ),
                               ),
@@ -434,7 +458,9 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
                                 Container(
                                   padding: const EdgeInsets.all(6),
                                   decoration: BoxDecoration(
-                                    color: RegisterColors.lavender.withOpacity(0.1),
+                                    color: RegisterColors.lavender.withOpacity(
+                                      0.1,
+                                    ),
                                     shape: BoxShape.circle,
                                   ),
                                   child: Icon(
@@ -470,7 +496,10 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
                     controller: _passwordController,
                     label: 'Password',
                     hintText: 'Create a strong password',
-                    prefixIcon: Icon(Icons.lock_outline, color: RegisterColors.primary),
+                    prefixIcon: Icon(
+                      Icons.lock_outline,
+                      color: RegisterColors.primary,
+                    ),
                     suffixIcon: IconButton(
                       icon: Icon(
                         _showPassword ? Icons.visibility_off : Icons.visibility,
@@ -511,14 +540,21 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
                     controller: _confirmPasswordController,
                     label: 'Confirm Password',
                     hintText: 'Confirm your password',
-                    prefixIcon: Icon(Icons.lock_outline, color: RegisterColors.secondary),
+                    prefixIcon: Icon(
+                      Icons.lock_outline,
+                      color: RegisterColors.secondary,
+                    ),
                     suffixIcon: IconButton(
                       icon: Icon(
-                        _showConfirmPassword ? Icons.visibility_off : Icons.visibility,
+                        _showConfirmPassword
+                            ? Icons.visibility_off
+                            : Icons.visibility,
                         color: RegisterColors.textSecondary,
                       ),
                       onPressed: () {
-                        setState(() => _showConfirmPassword = !_showConfirmPassword);
+                        setState(
+                          () => _showConfirmPassword = !_showConfirmPassword,
+                        );
                       },
                     ),
                     obscureText: !_showConfirmPassword,
@@ -542,7 +578,10 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
                   height: 56,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [RegisterColors.primary, RegisterColors.secondary],
+                      colors: [
+                        RegisterColors.primary,
+                        RegisterColors.secondary,
+                      ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -565,7 +604,10 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
                               SnackBar(
                                 content: Row(
                                   children: [
-                                    const Icon(Icons.warning, color: Colors.white),
+                                    const Icon(
+                                      Icons.warning,
+                                      color: Colors.white,
+                                    ),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Text(
@@ -590,7 +632,10 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
                               SnackBar(
                                 content: Row(
                                   children: [
-                                    const Icon(Icons.warning, color: Colors.white),
+                                    const Icon(
+                                      Icons.warning,
+                                      color: Colors.white,
+                                    ),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Text(
@@ -618,10 +663,33 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
 
                           if (success && context.mounted) {
                             // TODO: Save additional user data (gender, DOB) to Firestore
-                            Navigator.pushReplacement(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const HomeScreen(),
+                            // Navigator.pushReplacement(
+                            //   context,
+                            //   MaterialPageRoute(
+                            //     builder: (context) => const HomeScreen(),
+                            //   ),
+                            // );
+                            showDialog(
+                              context: context,
+                              barrierDismissible: false,
+                              builder: (context) => AlertDialog(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                title: const Text("Verify your email"),
+                                content: Text(
+                                  "A verification email has been sent to ${_emailController.text}. "
+                                  "Please verify your email before logging in.",
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () {
+                                      Navigator.pop(context);
+                                      Navigator.pop(context);
+                                    },
+                                    child: const Text("OK"),
+                                  ),
+                                ],
                               ),
                             );
                           }
@@ -631,22 +699,22 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
                       child: Center(
                         child: authController.isLoading
                             ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
                             : Text(
-                          'Create Account',
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
+                                'Create Account',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
                       ),
                     ),
                   ),
@@ -656,7 +724,10 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
 
                 // Terms with Neon Style
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: RegisterColors.primary.withOpacity(0.05),
                     borderRadius: BorderRadius.circular(30),

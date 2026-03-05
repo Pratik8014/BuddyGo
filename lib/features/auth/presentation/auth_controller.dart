@@ -96,39 +96,101 @@ class AuthController with ChangeNotifier {
     notifyListeners();
   }
 
+  // Future<bool> signInWithEmail(String email, String password) async {
+  //   try {
+  //     _setLoading(true);
+  //     final result = await _auth.signInWithEmailAndPassword(
+  //       email: email,
+  //       password: password,
+  //     );
+  //
+  //     await _saveLoginStatus(true);
+  //     await _loadCurrentUser();
+  //     _setLoading(false);
+  //     return true;
+  //   } catch (e) {
+  //     _setLoading(false);
+  //     return false;
+  //   }
+  // }
   Future<bool> signInWithEmail(String email, String password) async {
     try {
       _setLoading(true);
+
       final result = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
 
+      User? user = result.user;
+
+      await user?.reload();
+
+      if (user != null && !user.emailVerified) {
+
+        await _auth.signOut();
+        _setLoading(false);
+
+        throw FirebaseAuthException(
+          code: "email-not-verified",
+          message: "Please verify your email first.",
+        );
+      }
+
       await _saveLoginStatus(true);
       await _loadCurrentUser();
+
       _setLoading(false);
       return true;
+
     } catch (e) {
       _setLoading(false);
       return false;
     }
   }
 
+  // Future<bool> signUpWithEmail(String email, String password, String name) async {
+  //   try {
+  //     _setLoading(true);
+  //     final result = await _auth.createUserWithEmailAndPassword(
+  //       email: email,
+  //       password: password,
+  //     );
+  //
+  //     await result.user?.updateDisplayName(name);
+  //     await _createUserProfile(result.user!);
+  //     await _saveLoginStatus(true);
+  //     _setLoading(false);
+  //     return true;
+  //   } catch (e) {
+  //     _setLoading(false);
+  //     return false;
+  //   }
+  // }
   Future<bool> signUpWithEmail(String email, String password, String name) async {
     try {
       _setLoading(true);
+
       final result = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
+      // Set display name
       await result.user?.updateDisplayName(name);
-      await _createUserProfile(result.user!);
-      await _saveLoginStatus(true);
+
+      // Send verification email
+      await result.user?.sendEmailVerification();
+
+      // Sign out user until they verify email
+      await _auth.signOut();
+
       _setLoading(false);
       return true;
-    } catch (e) {
+
+    } on FirebaseAuthException catch (e) {
       _setLoading(false);
+      print(e.message);
       return false;
     }
   }
