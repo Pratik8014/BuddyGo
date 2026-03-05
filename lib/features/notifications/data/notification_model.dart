@@ -7,6 +7,9 @@ enum NotificationType {
   tripUpdate,
   joinRequest,
   report,
+  warning,   // ✅ ADD THIS
+  suspension, // optional but recommended
+  ban,        // optional
   general,
 }
 
@@ -93,6 +96,12 @@ class NotificationModel {
         return NotificationType.joinRequest;
       case 'report':
         return NotificationType.report;
+        case 'warning':
+        return NotificationType.warning;
+      case 'suspension':
+        return NotificationType.suspension;
+      case 'ban':
+        return NotificationType.ban;
       default:
         return NotificationType.general;
     }
@@ -110,6 +119,12 @@ class NotificationModel {
         return 'Join Request';
       case NotificationType.report:
         return 'Report Update';
+      case NotificationType.warning:
+        return 'Warning';
+      case NotificationType.suspension:
+        return 'Suspension';
+      case NotificationType.ban:
+        return 'Ban';
       case NotificationType.general:
         return 'Notification';
     }
@@ -127,6 +142,12 @@ class NotificationModel {
         return Icons.person_add;
       case NotificationType.report:
         return Icons.flag;
+      case NotificationType.warning:
+        return Icons.warning;
+      case NotificationType.suspension:
+        return Icons.block;
+      case NotificationType.ban:
+        return Icons.block;
       case NotificationType.general:
         return Icons.notifications;
     }
@@ -143,6 +164,12 @@ class NotificationModel {
       case NotificationType.joinRequest:
         return Colors.purple;
       case NotificationType.report:
+        return Colors.red;
+      case NotificationType.warning:
+        return Colors.yellow;
+      case NotificationType.suspension:
+        return Colors.grey;
+      case NotificationType.ban:
         return Colors.red;
       case NotificationType.general:
         return Colors.grey;

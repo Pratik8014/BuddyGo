@@ -1,6 +1,7 @@
 import 'package:buddygoapp/features/auth/presentation/admin_login_screen.dart';
 import 'package:buddygoapp/features/auth/presentation/phone_login_screen.dart';
 import 'package:buddygoapp/features/auth/presentation/register_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -682,6 +683,49 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                             _passwordController.text,
                           );
 
+                          if (success) {
+                            final user = FirebaseAuth.instance.currentUser;
+
+                            if (user != null) {
+                              final userDoc = await FirebaseFirestore.instance
+                                  .collection('users')
+                                  .doc(user.uid)
+                                  .get();
+
+                              final data = userDoc.data();
+
+                              /// 🚫 Check if banned
+                              if (data?['isBanned'] == true) {
+                                await FirebaseAuth.instance.signOut();
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text("Your account has been banned by admin."),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+
+                                setState(() => _isLoading = false);
+                                return;
+                              }
+
+                              /// ⛔ Check if suspended
+                              if (data?['isSuspended'] == true) {
+                                await FirebaseAuth.instance.signOut();
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text("Your account is suspended temporarily."),
+                                    backgroundColor: Colors.orange,
+                                  ),
+                                );
+
+                                setState(() => _isLoading = false);
+                                return;
+                              }
+                            }
+                          }
+
                           setState(() => _isLoading = false);
 
                           if (success && context.mounted) {
@@ -691,7 +735,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                 builder: (context) => const HomeScreen(),
                               ),
                             );
-                          } else if (context.mounted) {
+                          }else if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text('Invalid email or password'),
@@ -791,15 +835,32 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                       onTap: () async {
                         setState(() => _isLoading = true);
                         final success = await authController.signInWithGoogle();
-                        setState(() => _isLoading = false);
 
-                        if (success && context.mounted) {
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const HomeScreen(),
-                            ),
-                          );
+                        if (success) {
+                          final user = FirebaseAuth.instance.currentUser;
+
+                          if (user != null) {
+                            final userDoc = await FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(user.uid)
+                                .get();
+
+                            final data = userDoc.data();
+
+                            if (data?['isBanned'] == true || data?['isSuspended'] == true) {
+                              await FirebaseAuth.instance.signOut();
+
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text("Your account is restricted by admin."),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+
+                              setState(() => _isLoading = false);
+                              return;
+                            }
+                          }
                         }
                       },
                       borderRadius: BorderRadius.circular(20),

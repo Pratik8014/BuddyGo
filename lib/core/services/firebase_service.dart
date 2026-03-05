@@ -974,7 +974,70 @@ class FirebaseService {
       );
     }
   }
+  Future<void> warnUser({
+    required String adminId,
+    required String userId,
+    String? reason,
+  }) async {
+    await usersCollection.doc(userId).collection('warnings').add({
+      'reason': reason ?? 'Community guideline violation',
+      'adminId': adminId,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
 
+    await createNotification(
+      userId: userId,
+      title: '⚠️ Warning from Admin',
+      body: reason ?? 'You have received a warning from the admin.',
+      type: NotificationType.warning,
+      data: {
+        'reason': reason,
+        'adminId': adminId,
+      },
+    );
+  }
+
+  Future<void> suspendUser({
+    required String adminId,
+    required String userId,
+    String? reason,
+  }) async {
+    await usersCollection.doc(userId).update({
+      'accountStatus': 'suspended',
+      'suspendedAt': FieldValue.serverTimestamp(),
+      'suspendedBy': adminId,
+    });
+
+    await createNotification(
+      userId: userId,
+      title: '⛔ Account Suspended',
+      body: reason ?? 'Your account has been suspended by admin.',
+      type: NotificationType.warning,
+    );
+  }
+
+  Future<void> banUser({
+    required String adminId,
+    required String userId,
+    String? reason,
+  }) async {
+    await usersCollection.doc(userId).update({
+      'accountStatus': 'banned',
+      'bannedAt': FieldValue.serverTimestamp(),
+      'bannedBy': adminId,
+    });
+
+    await createNotification(
+      userId: userId,
+      title: '🚫 Account Banned',
+      body: reason ?? 'Your account has been permanently banned.',
+      type: NotificationType.warning,
+    );
+  }
+
+  Future<void> deleteUserAccount(String userId) async {
+    await usersCollection.doc(userId).delete();
+  }
 
   // Get current user ID
   String? get currentUserId => _auth.currentUser?.uid;

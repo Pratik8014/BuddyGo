@@ -9,6 +9,7 @@ import 'package:buddygoapp/core/widgets/custom_button.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/services/notification_service.dart';
+import '../../notifications/data/notification_model.dart';
 
 // ==================== CONSTANTS ====================
 class AdminProfileColors {
@@ -47,6 +48,7 @@ class AdminUserProfileScreen extends StatefulWidget {
 
 class _AdminUserProfileScreenState extends State<AdminUserProfileScreen> with TickerProviderStateMixin {
   final FirebaseService _firebaseService = FirebaseService();
+  final NotificationService _notificationService = NotificationService();
   Map<String, dynamic>? _userData;
   bool _isLoading = true;
 
@@ -1390,9 +1392,37 @@ class _AdminUserProfileScreenState extends State<AdminUserProfileScreen> with Ti
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: ElevatedButton(
-                          onPressed: () {
+                          onPressed: () async {
+                            final reason = reasonController.text.trim();
+
                             Navigator.pop(context);
-                            _showSnackbar('Warning sent successfully', isSuccess: true);
+
+                            try {
+
+                              /// Save warning in Firestore
+                              await _firebaseService.reportsCollection.add({
+                                'reportedUserId': widget.userId,
+                                'reason': reason.isEmpty ? 'Admin Warning' : reason,
+                                'status': 'warned',
+                                'createdAt': FieldValue.serverTimestamp(),
+                                'adminId': FirebaseAuth.instance.currentUser?.uid,
+                              });
+
+                              /// Send notification
+                              await _firebaseService.createNotification(
+                                userId: widget.userId,
+                                title: '⚠️ Warning from Admin',
+                                body: reason.isEmpty
+                                    ? 'You received a warning from BuddyGO admin.'
+                                    : reason,
+                                type: NotificationType.report,
+                              );
+
+                              _showSnackbar('Warning sent successfully', isSuccess: true);
+
+                            } catch (e) {
+                              _showSnackbar('Failed to send warning', isError: true);
+                            }
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.transparent,
@@ -1432,9 +1462,29 @@ class _AdminUserProfileScreenState extends State<AdminUserProfileScreen> with Ti
         actionText: 'Suspend',
         actionColor: AdminProfileColors.error,
       ),
-    ).then((confirmed) {
+    ).then((confirmed) async {
       if (confirmed == true) {
-        _showSnackbar('User suspended successfully', isSuccess: true);
+        try {
+
+          /// Update user status
+          await _firebaseService.usersCollection.doc(widget.userId).update({
+            'isSuspended': true,
+            'suspendedAt': FieldValue.serverTimestamp(),
+          });
+
+          /// Send notification
+          await _firebaseService.createNotification(
+            userId: widget.userId,
+            title: '⛔ Account Suspended',
+            body: 'Your BuddyGO account has been suspended by admin.',
+            type: NotificationType.report,
+          );
+
+          _showSnackbar('User suspended successfully', isSuccess: true);
+
+        } catch (e) {
+          _showSnackbar('Failed to suspend user', isError: true);
+        }
       }
     });
   }
@@ -1448,9 +1498,27 @@ class _AdminUserProfileScreenState extends State<AdminUserProfileScreen> with Ti
         actionText: 'Ban',
         actionColor: AdminProfileColors.error,
       ),
-    ).then((confirmed) {
+    ).then((confirmed) async {
       if (confirmed == true) {
-        _showSnackbar('User banned successfully', isSuccess: true);
+        try {
+
+          await _firebaseService.usersCollection.doc(widget.userId).update({
+            'isBanned': true,
+            'bannedAt': FieldValue.serverTimestamp(),
+          });
+
+          await _firebaseService.createNotification(
+            userId: widget.userId,
+            title: '🚫 Account Banned',
+            body: 'Your BuddyGO account has been permanently banned.',
+            type: NotificationType.report,
+          );
+
+          _showSnackbar('User banned successfully', isSuccess: true);
+
+        } catch (e) {
+          _showSnackbar('Failed to ban user', isError: true);
+        }
       }
     });
   }
@@ -1460,13 +1528,24 @@ class _AdminUserProfileScreenState extends State<AdminUserProfileScreen> with Ti
       context: context,
       builder: (context) => _buildActionDialog(
         title: 'Delete Account',
-        message: 'Are you sure you want to permanently delete this user account? This action cannot be undone.',
+        message: 'Are you sure you want to permanently delete this user account?',
         actionText: 'Delete',
         actionColor: AdminProfileColors.error,
       ),
-    ).then((confirmed) {
+    ).then((confirmed) async {
       if (confirmed == true) {
-        _showSnackbar('Account deletion requested', isSuccess: true);
+        try {
+
+          /// Delete Firestore user
+          await _firebaseService.usersCollection.doc(widget.userId).delete();
+
+          _showSnackbar('User account deleted', isSuccess: true);
+
+          Navigator.pop(context);
+
+        } catch (e) {
+          _showSnackbar('Failed to delete account', isError: true);
+        }
       }
     });
   }
