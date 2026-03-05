@@ -135,13 +135,7 @@ class FirebaseService {
         throw Exception('Trip is full');
       }
 
-      // 2️⃣ Update Trip
-      transaction.update(tripRef, {
-        'currentMembers': currentMembers + 1,
-        'memberIds': FieldValue.arrayUnion([userId]),
-      });
-
-      // 3️⃣ Find related Group by tripId
+      // 2️⃣ Find related Group by tripId
       final groupQuery = await groupsCollection
           .where('tripId', isEqualTo: tripId)
           .limit(1)
@@ -154,41 +148,189 @@ class FirebaseService {
       final groupDoc = groupQuery.docs.first;
       final groupRef = groupsCollection.doc(groupDoc.id);
       final groupData = groupDoc.data() as Map<String, dynamic>;
-
       final group = GroupModel.fromJson({...groupData, 'id': groupDoc.id});
 
-      // 4️⃣ Join Group Logic
-      if (group.isBlocked(userId)) {
-        throw Exception('You are blocked from this group');
-      }
-
-      if (group.isMember(userId)) {
-        return; // Already in group
-      }
-
-      if (!group.hasVacancy()) {
-        throw Exception('Group is full');
-      }
-
+      // 3️⃣ Check if group requires approval
       if (group.isJoinApprovalRequired) {
+        // Create join request
         final request = JoinRequest(
           userId: userId,
           userName: userName,
           message: 'I want to join this trip',
         );
 
+        // Add to pending requests
         transaction.update(groupRef, {
           'pendingRequests': FieldValue.arrayUnion([request.toJson()]),
         });
+
+        // 4️⃣ Send notification to all admins
+        final adminIds = group.adminIds;
+        for (String adminId in adminIds) {
+          // Create notification in Firestore
+          await createNotification(
+            userId: adminId,
+            title: '👋 New Join Request',
+            body: '$userName wants to join ${group.name}',
+            type: NotificationType.joinRequest,
+            senderId: userId,
+            senderName: userName,
+            groupId: group.id,
+            groupName: group.name,
+            data: {
+              'requestId': DateTime.now().millisecondsSinceEpoch.toString(),
+              'userId': userId,
+              'userName': userName,
+              'groupName': group.name,
+              'tripId': tripId,
+            },
+          );
+        }
       } else {
+        // Direct join (no approval needed)
+        transaction.update(tripRef, {
+          'currentMembers': currentMembers + 1,
+          'memberIds': FieldValue.arrayUnion([userId]),
+        });
+
         transaction.update(groupRef, {
           'memberIds': FieldValue.arrayUnion([userId]),
           'currentMembers': group.currentMembers + 1,
           'memberRoles.$userId': 'member',
           'lastActivityAt': FieldValue.serverTimestamp(),
         });
+
+        // Send welcome notification to user
+        await createNotification(
+          userId: userId,
+          title: '🎉 Welcome to the Group!',
+          body: 'You have successfully joined ${group.name}',
+          type: NotificationType.tripUpdate,
+          groupId: group.id,
+          groupName: group.name,
+        );
       }
     });
+  }
+
+  // Add these methods to FirebaseService
+
+  /// Approve a join request
+  Future<void> approveJoinRequest({
+    required String groupId,
+    required String userId,
+    required String adminId,
+    required String adminName,
+  }) async {
+    final groupRef = groupsCollection.doc(groupId);
+
+    await _firestore.runTransaction((transaction) async {
+      final groupDoc = await transaction.get(groupRef);
+      if (!groupDoc.exists) throw Exception('Group not found');
+
+      final data = groupDoc.data() as Map<String, dynamic>;
+      final group = GroupModel.fromJson({...data, 'id': groupDoc.id});
+
+      // Get current pending requests
+      final pendingRequests = List<Map<String, dynamic>>.from(data['pendingRequests'] ?? []);
+
+      // Find and update the request status
+      final updatedRequests = pendingRequests.map((req) {
+        if (req['userId'] == userId) {
+          req['status'] = 'approved';
+          req['respondedAt'] = Timestamp.now();
+          req['respondedBy'] = adminId;
+        }
+        return req;
+      }).toList();
+
+      // Add user to members
+      transaction.update(groupRef, {
+        'pendingRequests': updatedRequests,
+        'memberIds': FieldValue.arrayUnion([userId]),
+        'currentMembers': (data['currentMembers'] ?? 0) + 1,
+        'memberRoles.$userId': 'member',
+        'lastActivityAt': FieldValue.serverTimestamp(),
+      });
+
+      // Find related trip to update member count
+      if (group.tripId != null) {
+        final tripRef = tripsCollection.doc(group.tripId);
+        final tripDoc = await transaction.get(tripRef);
+        if (tripDoc.exists) {
+          transaction.update(tripRef, {
+            'currentMembers': FieldValue.increment(1),
+            'memberIds': FieldValue.arrayUnion([userId]),
+          });
+        }
+      }
+    });
+
+    // Send notification to user about approval
+    await createNotification(
+      userId: userId,
+      title: '✅ Request Approved!',
+      body: 'Your request to join the group has been approved by $adminName',
+      type: NotificationType.tripUpdate,
+      groupId: groupId,
+      data: {
+        'approvedBy': adminId,
+        'approvedByName': adminName,
+      },
+    );
+  }
+
+  /// Reject a join request
+  Future<void> rejectJoinRequest({
+    required String groupId,
+    required String userId,
+    required String adminId,
+    required String adminName,
+    String? reason,
+  }) async {
+    final groupRef = groupsCollection.doc(groupId);
+
+    await _firestore.runTransaction((transaction) async {
+      final groupDoc = await transaction.get(groupRef);
+      if (!groupDoc.exists) throw Exception('Group not found');
+
+      final data = groupDoc.data() as Map<String, dynamic>;
+
+      // Get current pending requests
+      final pendingRequests = List<Map<String, dynamic>>.from(data['pendingRequests'] ?? []);
+
+      // Find and update the request status
+      final updatedRequests = pendingRequests.map((req) {
+        if (req['userId'] == userId) {
+          req['status'] = 'rejected';
+          req['respondedAt'] = Timestamp.now();
+          req['respondedBy'] = adminId;
+          req['rejectionReason'] = reason;
+        }
+        return req;
+      }).toList();
+
+      transaction.update(groupRef, {
+        'pendingRequests': updatedRequests,
+        'lastActivityAt': FieldValue.serverTimestamp(),
+      });
+    });
+
+    // Send notification to user about rejection
+    await createNotification(
+      userId: userId,
+      title: '❌ Request Declined',
+      body: reason != null
+          ? 'Your request to join the group was declined: $reason'
+          : 'Your request to join the group was declined by $adminName',
+      type: NotificationType.tripUpdate,
+      groupId: groupId,
+      data: {
+        'rejectedBy': adminId,
+        'rejectedByName': adminName,
+        'reason': reason,
+      },
+    );
   }
 
 
@@ -427,48 +569,48 @@ class FirebaseService {
     });
   }
 
-  Future<void> approveJoinRequest(String groupId, String userId) async {
-    final groupRef = groupsCollection.doc(groupId);
-
-    await _firestore.runTransaction((transaction) async {
-      final groupDoc = await transaction.get(groupRef);
-      if (!groupDoc.exists) throw Exception('Group not found');
-
-      final data = groupDoc.data() as Map<String, dynamic>;
-      final pendingRequests = List<Map<String, dynamic>>.from(data['pendingRequests'] ?? []);
-
-      // Remove request from pending
-      final updatedRequests = pendingRequests.where((req) => req['userId'] != userId).toList();
-
-      // Add user to members
-      transaction.update(groupRef, {
-        'pendingRequests': updatedRequests,
-        'memberIds': FieldValue.arrayUnion([userId]),
-        'currentMembers': (data['currentMembers'] ?? 0) + 1,
-        'memberRoles.$userId': 'member',
-        'lastActivityAt': FieldValue.serverTimestamp(),
-      });
-    });
-  }
-
-  Future<void> rejectJoinRequest(String groupId, String userId) async {
-    final groupRef = groupsCollection.doc(groupId);
-
-    await _firestore.runTransaction((transaction) async {
-      final groupDoc = await transaction.get(groupRef);
-      if (!groupDoc.exists) throw Exception('Group not found');
-
-      final data = groupDoc.data() as Map<String, dynamic>;
-      final pendingRequests = List<Map<String, dynamic>>.from(data['pendingRequests'] ?? []);
-
-      // Remove request from pending
-      final updatedRequests = pendingRequests.where((req) => req['userId'] != userId).toList();
-
-      transaction.update(groupRef, {
-        'pendingRequests': updatedRequests,
-      });
-    });
-  }
+  // Future<void> approveJoinRequest(String groupId, String userId) async {
+  //   final groupRef = groupsCollection.doc(groupId);
+  //
+  //   await _firestore.runTransaction((transaction) async {
+  //     final groupDoc = await transaction.get(groupRef);
+  //     if (!groupDoc.exists) throw Exception('Group not found');
+  //
+  //     final data = groupDoc.data() as Map<String, dynamic>;
+  //     final pendingRequests = List<Map<String, dynamic>>.from(data['pendingRequests'] ?? []);
+  //
+  //     // Remove request from pending
+  //     final updatedRequests = pendingRequests.where((req) => req['userId'] != userId).toList();
+  //
+  //     // Add user to members
+  //     transaction.update(groupRef, {
+  //       'pendingRequests': updatedRequests,
+  //       'memberIds': FieldValue.arrayUnion([userId]),
+  //       'currentMembers': (data['currentMembers'] ?? 0) + 1,
+  //       'memberRoles.$userId': 'member',
+  //       'lastActivityAt': FieldValue.serverTimestamp(),
+  //     });
+  //   });
+  // }
+  //
+  // Future<void> rejectJoinRequest(String groupId, String userId) async {
+  //   final groupRef = groupsCollection.doc(groupId);
+  //
+  //   await _firestore.runTransaction((transaction) async {
+  //     final groupDoc = await transaction.get(groupRef);
+  //     if (!groupDoc.exists) throw Exception('Group not found');
+  //
+  //     final data = groupDoc.data() as Map<String, dynamic>;
+  //     final pendingRequests = List<Map<String, dynamic>>.from(data['pendingRequests'] ?? []);
+  //
+  //     // Remove request from pending
+  //     final updatedRequests = pendingRequests.where((req) => req['userId'] != userId).toList();
+  //
+  //     transaction.update(groupRef, {
+  //       'pendingRequests': updatedRequests,
+  //     });
+  //   });
+  // }
 
   Future<void> leaveGroup(String groupId, String userId) async {
     final groupRef = groupsCollection.doc(groupId);

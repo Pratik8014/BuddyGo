@@ -8,8 +8,10 @@ import 'package:badges/badges.dart' as badges;
 import 'package:buddygoapp/core/services/firebase_service.dart';
 import 'package:buddygoapp/features/auth/presentation/auth_controller.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
+import 'package:buddygoapp/features/groups/data/group_model.dart'; // ✅ ADD THIS IMPORT
 
 import 'group_members_screen.dart';
+import 'join_requests_screen.dart';
 
 // ==================== CONSTANTS ====================
 class ChatColors {
@@ -59,6 +61,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
   bool _isSelectionMode = false;
   final Set<String> _selectedMessageIds = {};
 
+  // ✅ ADD THESE MISSING VARIABLES
+  bool _isCurrentUserAdmin = false;
+  int _pendingRequestsCount = 0;
+
   // Animation controllers
   late AnimationController _fadeAnimationController;
   late Animation<double> _fadeAnimation;
@@ -104,6 +110,26 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
         });
       }
     });
+
+    // ✅ Listen for group changes to update admin status and pending requests
+    _firebaseService.groupsCollection.doc(widget.groupId).snapshots().listen((snapshot) {
+      if (snapshot.exists && mounted) {
+        final data = snapshot.data() as Map<String, dynamic>;
+        final group = GroupModel.fromJson({...data, 'id': snapshot.id});
+
+        final authController = Provider.of<AuthController>(context, listen: false);
+        final currentUserId = authController.currentUser?.id;
+
+        if (currentUserId != null) {
+          setState(() {
+            _isCurrentUserAdmin = group.isAdmin(currentUserId);
+            _pendingRequestsCount = group.pendingRequests
+                .where((req) => req.status == RequestStatus.pending)
+                .length;
+          });
+        }
+      }
+    });
   }
 
   @override
@@ -123,6 +149,19 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
       if (group != null && mounted) {
         _memberCountNotifier.value = group.currentMembers;
         _onlineCountNotifier.value = (group.currentMembers * 0.6).round();
+
+        // ✅ Check if current user is admin
+        final authController = Provider.of<AuthController>(context, listen: false);
+        final currentUserId = authController.currentUser?.id;
+        if (currentUserId != null) {
+          _isCurrentUserAdmin = group.isAdmin(currentUserId);
+
+          // Count pending requests
+          _pendingRequestsCount = group.pendingRequests
+              .where((req) => req.status == RequestStatus.pending)
+              .length;
+        }
+
         setState(() {});
       }
     });
@@ -1249,6 +1288,34 @@ class _GroupChatScreenState extends State<GroupChatScreen> with TickerProviderSt
                       );
                     },
                   ),
+
+                  const Divider(height: 24, color: ChatColors.border),
+
+                  /// ✅ Join Requests Tile (Only for Admins)
+                  if (_isCurrentUserAdmin)
+                    _buildInfoTile(
+                      icon: Icons.how_to_reg,
+                      title: 'Join Requests',
+                      subtitle: _pendingRequestsCount > 0
+                          ? '$_pendingRequestsCount pending ${_pendingRequestsCount == 1 ? 'request' : 'requests'}'
+                          : 'No pending requests',
+                      color: ChatColors.primary,
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => JoinRequestsScreen(
+                              groupId: widget.groupId,
+                              groupName: widget.groupName,
+                            ),
+                          ),
+                        ).then((_) {
+                          // Refresh counts when returning
+                          _initializeCounts();
+                        });
+                      },
+                    ),
 
                   const Divider(height: 24, color: ChatColors.border),
 
